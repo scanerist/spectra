@@ -8,3 +8,11 @@ class WireFormatError(GatewayError):
 
 class InvalidFrameRateError(GatewayError):
     pass
+
+
+class ClientDisconnectedError(GatewayError):
+    pass
+
+
+class UnreadableClientFrameError(GatewayError):
+    pass

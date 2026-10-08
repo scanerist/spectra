@@ -3,7 +3,7 @@ import math
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from spectra.analysis.domain.errors import InvalidShapeError, OutOfRangeError
+from spectra.analysis.domain.errors import InvalidShapeError, InvalidTimeError, OutOfRangeError
 
 type Float32Array = NDArray[np.float32]
 
@@ -11,6 +11,11 @@ type Float32Array = NDArray[np.float32]
 def require_finite(name: str, value: float) -> None:
     if not math.isfinite(value):
         raise OutOfRangeError(f"{name} must be finite, got {value}")
+
+
+def require_time(time_s: float) -> None:
+    if not (math.isfinite(time_s) and time_s >= 0.0):
+        raise InvalidTimeError(f"time must be finite and >= 0, got {time_s}")
 
 
 def require_in_range(name: str, value: float, *, low: float, high: float) -> None:

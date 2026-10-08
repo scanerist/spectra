@@ -20,3 +20,7 @@ class InvalidShapeError(AnalysisError):
 
 class OutOfRangeError(AnalysisError):
     pass
+
+
+class InvalidPeaksError(AnalysisError):
+    pass

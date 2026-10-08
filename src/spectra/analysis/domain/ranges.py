@@ -1,9 +1,16 @@
+import math
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from spectra.analysis.domain.errors import InvalidShapeError, OutOfRangeError
 
 type Float32Array = NDArray[np.float32]
+
+
+def require_finite(name: str, value: float) -> None:
+    if not math.isfinite(value):
+        raise OutOfRangeError(f"{name} must be finite, got {value}")
 
 
 def require_in_range(name: str, value: float, *, low: float, high: float) -> None:

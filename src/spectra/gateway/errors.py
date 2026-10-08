@@ -16,3 +16,7 @@ class ClientDisconnectedError(GatewayError):
 
 class UnreadableClientFrameError(GatewayError):
     pass
+
+
+class GatewayNotConfiguredError(GatewayError):
+    pass

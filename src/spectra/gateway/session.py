@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -42,12 +43,17 @@ class ClientSession:
             logger.warning("control outbox full, dropping %s", message.type)
 
     async def run(self) -> None:
+        async with asyncio.TaskGroup() as group:
+            reader = group.create_task(self._until_disconnected(self._read_forever))
+            writer = group.create_task(self._until_disconnected(self._write_forever))
+            reader.add_done_callback(lambda _: writer.cancel())
+            writer.add_done_callback(lambda _: reader.cancel())
+
+    async def _until_disconnected(self, loop: Callable[[], Awaitable[None]]) -> None:
         try:
-            async with asyncio.TaskGroup() as group:
-                group.create_task(self._read_forever())
-                group.create_task(self._write_forever())
-        except* ClientDisconnectedError as disconnected:
-            logger.info("client session ended: %s", disconnected.exceptions[0])
+            await loop()
+        except ClientDisconnectedError as error:
+            logger.info("client session ended: %s", error)
 
     async def _write_forever(self) -> None:
         clock = self._dependencies.clock

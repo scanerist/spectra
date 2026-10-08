@@ -1,8 +1,11 @@
 import asyncio
 import logging
+from collections.abc import Callable
 
+import anyio
 import pytest
 
+from spectra.gateway.errors import ClientDisconnectedError
 from spectra.gateway.session import OUTBOX_CAPACITY, ClientSession, SessionDependencies
 from spectra.gateway.wire.frame_codec import decode_frame
 from spectra.gateway.wire.messages import DirectorLog, Prompt, ServerMessage
@@ -159,3 +162,20 @@ async def test_unexpected_errors_propagate() -> None:
         async with asyncio.timeout(TIMEOUT_S):
             await make_session(connection, handler=ExplodingHandler()).run()
     assert raised.group_contains(RuntimeError)
+
+
+class LeaveWhileCancelledConnection(FakeConnection):
+    def __init__(self, cancel: Callable[[], object]) -> None:
+        super().__init__()
+        self._cancel = cancel
+
+    async def receive_text(self) -> str:
+        self._cancel()
+        raise ClientDisconnectedError("client left while the host was cancelling")
+
+
+async def test_host_cancellation_survives_a_simultaneous_disconnect() -> None:
+    with anyio.CancelScope() as host_scope:
+        connection = LeaveWhileCancelledConnection(host_scope.cancel)
+        await make_session(connection).run()
+    assert host_scope.cancelled_caught

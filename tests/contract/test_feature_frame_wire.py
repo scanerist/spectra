@@ -6,7 +6,13 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from spectra.legacy.protocol import FeatureFrame
+from spectra.analysis.domain.feature_frame import FeatureFrame
+from spectra.analysis.domain.levels import Levels
+from spectra.analysis.domain.peaks import Peaks
+from spectra.analysis.domain.spectrum import Spectrum
+from spectra.analysis.domain.tempo import BeatPosition, Tempo
+from spectra.analysis.domain.waveform import Waveform
+from spectra.gateway.wire.frame_codec import decode_frame, encode_frame
 
 GOLDEN_PATH: Final = Path(__file__).parent / "golden" / "feature_frame_v0.bin"
 
@@ -50,18 +56,13 @@ def golden_peaks() -> NDArray[np.float32]:
 
 def golden_frame() -> FeatureFrame:
     return FeatureFrame(
-        t=1.5,
-        bands=golden_bands(),
-        waveform=golden_waveform(),
-        peaks=golden_peaks(),
-        kick=0.75,
-        bass=0.5,
-        mid=0.25,
-        high=0.125,
-        bpm=128.0,
-        beat_phase=0.25,
-        bar=3,
-        beat_in_bar=2,
+        time_s=1.5,
+        spectrum=Spectrum(bands=golden_bands()),
+        waveform=Waveform(samples=golden_waveform()),
+        peaks=Peaks.from_padded_array(golden_peaks()),
+        levels=Levels(kick=0.75, bass=0.5, mid=0.25, high=0.125),
+        tempo=Tempo(bpm=128.0),
+        position=BeatPosition(bar=3, beat_in_bar=2, phase=0.25),
         energy=0.625,
     )
 
@@ -149,4 +150,8 @@ def test_golden_counters_are_ints(golden_map: dict[str, object], key: str, expec
 
 
 def test_encoder_reproduces_golden_bytes(golden_bytes: bytes) -> None:
-    assert golden_frame().pack() == golden_bytes
+    assert encode_frame(golden_frame()) == golden_bytes
+
+
+def test_decoder_reads_golden_bytes_into_the_golden_frame(golden_bytes: bytes) -> None:
+    assert decode_frame(golden_bytes) == golden_frame()

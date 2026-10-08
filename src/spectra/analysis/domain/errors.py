@@ -12,3 +12,11 @@ class InvalidTimeError(AnalysisError):
 
 class InvalidBeatPositionError(AnalysisError):
     pass
+
+
+class InvalidShapeError(AnalysisError):
+    pass
+
+
+class OutOfRangeError(AnalysisError):
+    pass

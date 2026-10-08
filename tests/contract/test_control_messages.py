@@ -3,7 +3,8 @@ import json
 import pytest
 from pydantic import BaseModel
 
-from spectra.legacy.protocol import (
+from spectra.gateway.wire.messages import (
+    CLIENT_MESSAGE_ADAPTER,
     DecksState,
     DirectorLog,
     FrameCapture,
@@ -13,7 +14,6 @@ from spectra.legacy.protocol import (
     ShaderCompiled,
     ShaderLoad,
     StudioProgress,
-    client_message_adapter,
 )
 
 type JsonObject = dict[str, object]
@@ -138,6 +138,6 @@ def test_server_message_json_shape(
 def test_client_message_json_shape(
     model: type[BaseModel], contract_json: JsonObject, parsed: JsonObject
 ) -> None:
-    message = client_message_adapter.validate_json(json.dumps(contract_json))
+    message = CLIENT_MESSAGE_ADAPTER.validate_json(json.dumps(contract_json))
     assert isinstance(message, model)
     assert message.model_dump(mode="json") == parsed

@@ -2,4 +2,20 @@
 name = "spectra"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "msgpack>=1.2.3",
+    "numpy>=2.5.3",
+    "pydantic>=2.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest]
+minversion = "9.0"
+strict = true
+testpaths = ["tests"]
+addopts = ["-ra", "--import-mode=importlib"]
+pythonpath = ["."]

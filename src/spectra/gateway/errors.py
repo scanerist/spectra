@@ -4,3 +4,7 @@ class GatewayError(Exception):
 
 class WireFormatError(GatewayError):
     pass
+
+
+class InvalidFrameRateError(GatewayError):
+    pass

@@ -45,6 +45,9 @@ ignore = ["D", "COM812", "CPY001", "TRY003", "EM101", "EM102", "TC001", "TC002",
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "INP001", "SLF001"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["spectra", "tests"]
+
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
@@ -52,6 +55,8 @@ ban-relative-imports = "all"
 strict = true
 python_version = "3.14"
 files = ["src", "tests"]
+mypy_path = ["src", "."]
+explicit_package_bases = true
 exclude = ["^src/spectra/legacy/", "^tests/legacy/"]
 plugins = ["pydantic.mypy"]
 

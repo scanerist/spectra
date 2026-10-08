@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from engine.protocol import (
+from spectra.legacy.protocol import (
     BANDS_FMAX_HZ,
     BANDS_FMIN_HZ,
     F32,

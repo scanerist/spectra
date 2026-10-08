@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from engine.protocol import FeatureFrame
+from spectra.legacy.protocol import FeatureFrame
 
 GOLDEN_PATH: Final = Path(__file__).parent / "golden" / "feature_frame_v0.bin"
 

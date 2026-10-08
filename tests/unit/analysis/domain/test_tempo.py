@@ -1,4 +1,5 @@
 import math
+from typing import Final
 
 import pytest
 from hypothesis import given
@@ -11,8 +12,8 @@ from spectra.analysis.domain.errors import (
 )
 from spectra.analysis.domain.tempo import BEATS_PER_BAR, MAX_BPM, MIN_BPM, BeatPosition, Tempo
 
-bpms = st.floats(min_value=MIN_BPM, max_value=MAX_BPM)
-times_s = st.floats(min_value=0.0, max_value=1e6)
+BPMS: Final = st.floats(min_value=MIN_BPM, max_value=MAX_BPM)
+TIMES_S: Final = st.floats(min_value=0.0, max_value=1e6)
 
 
 def test_beat_duration_at_120_bpm_is_half_second() -> None:
@@ -52,7 +53,7 @@ def test_position_rejects_invalid_time(time_s: float) -> None:
         Tempo(bpm=128.0).position_at(time_s)
 
 
-@given(bpm=bpms, time_s=times_s)
+@given(bpm=BPMS, time_s=TIMES_S)
 def test_position_invariants_hold_for_any_time_and_tempo(bpm: float, time_s: float) -> None:
     position = Tempo(bpm=bpm).position_at(time_s)
     assert position.bar >= 0
@@ -60,7 +61,7 @@ def test_position_invariants_hold_for_any_time_and_tempo(bpm: float, time_s: flo
     assert 0.0 <= position.phase < 1.0
 
 
-@given(bpm=bpms, time_s=times_s)
+@given(bpm=BPMS, time_s=TIMES_S)
 def test_position_reconstructs_elapsed_beats(bpm: float, time_s: float) -> None:
     tempo = Tempo(bpm=bpm)
     position = tempo.position_at(time_s)

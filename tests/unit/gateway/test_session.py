@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from typing import Final
 
 import anyio
 import pytest
@@ -17,9 +18,9 @@ from tests.fakes import (
     frame_at_bar,
 )
 
-FRAME_RATE_HZ = 60.0
-GREETING = DirectorLog(bar=0, text="engine connected")
-TIMEOUT_S = 2.0
+FRAME_RATE_HZ: Final = 60.0
+GREETING: Final = DirectorLog(bar=0, text="engine connected")
+TIMEOUT_S: Final = 2.0
 
 pytestmark = pytest.mark.anyio
 

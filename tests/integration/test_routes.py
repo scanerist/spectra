@@ -1,3 +1,5 @@
+from typing import Final
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,8 +13,8 @@ from spectra.gateway.wire.messages import DirectorLog, Prompt
 from spectra.shared.clock import MonotonicClock
 from tests.fakes import RecordingHandler, StaticFeatureSource, frame_at_bar
 
-GREETING = DirectorLog(bar=0, text="hello from routes")
-REPLY = DirectorLog(bar=9, text="noted")
+GREETING: Final = DirectorLog(bar=0, text="hello from routes")
+REPLY: Final = DirectorLog(bar=9, text="noted")
 
 
 @pytest.fixture

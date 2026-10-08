@@ -1,4 +1,5 @@
 import math
+from typing import Final
 
 import msgpack
 import numpy as np
@@ -16,7 +17,7 @@ from spectra.analysis.domain.waveform import WAVEFORM_LENGTH, Waveform
 from spectra.gateway.errors import WireFormatError
 from spectra.gateway.wire.frame_codec import PROTOCOL_VERSION, decode_frame, encode_frame
 
-unit = st.floats(min_value=0.0, max_value=1.0)
+UNIT: Final = st.floats(min_value=0.0, max_value=1.0)
 
 
 def float32_arrays(length: int, *, low: float, high: float) -> st.SearchStrategy[np.ndarray]:
@@ -24,7 +25,7 @@ def float32_arrays(length: int, *, low: float, high: float) -> st.SearchStrategy
     return arrays(np.float32, length, elements=elements)
 
 
-frames = st.builds(
+FRAMES: Final = st.builds(
     FeatureFrame,
     time_s=st.floats(min_value=0.0, max_value=1e7),
     spectrum=st.builds(Spectrum, bands=float32_arrays(BAND_COUNT, low=0.0, high=1.0)),
@@ -33,12 +34,12 @@ frames = st.builds(
         st.builds(
             Peak,
             freq_hz=st.floats(min_value=1.0, max_value=24_000.0),
-            amplitude=unit,
+            amplitude=UNIT,
             phase_rad=st.floats(min_value=-2 * math.pi, max_value=2 * math.pi),
         ),
         max_size=PEAK_COUNT,
     ).map(Peaks.ranked),
-    levels=st.builds(Levels, kick=unit, bass=unit, mid=unit, high=unit),
+    levels=st.builds(Levels, kick=UNIT, bass=UNIT, mid=UNIT, high=UNIT),
     tempo=st.builds(Tempo, bpm=st.floats(min_value=MIN_BPM, max_value=MAX_BPM)),
     position=st.builds(
         BeatPosition,
@@ -46,7 +47,7 @@ frames = st.builds(
         beat_in_bar=st.integers(min_value=0, max_value=BEATS_PER_BAR - 1),
         phase=st.floats(min_value=0.0, max_value=1.0, exclude_max=True),
     ),
-    energy=unit,
+    energy=UNIT,
 )
 
 
@@ -73,13 +74,13 @@ def pack(payload: dict[str, object]) -> bytes:
     return packed
 
 
-@given(frame=frames)
+@given(frame=FRAMES)
 def test_decode_encode_round_trip_is_identity(frame: FeatureFrame) -> None:
     data = encode_frame(frame)
     assert encode_frame(decode_frame(data)) == data
 
 
-@given(frame=frames)
+@given(frame=FRAMES)
 def test_decoded_frame_matches_the_encoded_one(frame: FeatureFrame) -> None:
     decoded = decode_frame(encode_frame(frame))
     assert decoded.time_s == frame.time_s

@@ -1,12 +1,13 @@
 import math
+from typing import Final
 
 import pytest
 
 from spectra.gateway.errors import InvalidFrameRateError
 from spectra.gateway.pacing import FramePacer
 
-FRAME_RATE_HZ = 60.0
-PERIOD_S = 1.0 / FRAME_RATE_HZ
+FRAME_RATE_HZ: Final = 60.0
+PERIOD_S: Final = 1.0 / FRAME_RATE_HZ
 
 
 def test_period_is_reciprocal_of_frame_rate() -> None:

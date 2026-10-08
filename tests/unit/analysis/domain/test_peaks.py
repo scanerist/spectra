@@ -1,4 +1,5 @@
 import math
+from typing import Final
 
 import numpy as np
 import pytest
@@ -100,7 +101,7 @@ def test_from_padded_array_rejects_malformed_padding(
         Peaks.from_padded_array(padded)
 
 
-peak_strategy = st.builds(
+PEAK_STRATEGY: Final = st.builds(
     Peak,
     freq_hz=st.floats(min_value=1.0, max_value=24_000.0),
     amplitude=st.floats(min_value=0.0, max_value=1.0),
@@ -108,7 +109,7 @@ peak_strategy = st.builds(
 )
 
 
-@given(candidates=st.lists(peak_strategy, max_size=PEAK_COUNT))
+@given(candidates=st.lists(PEAK_STRATEGY, max_size=PEAK_COUNT))
 def test_padded_array_round_trip(candidates: list[Peak]) -> None:
     padded = Peaks.ranked(candidates).as_padded_array()
     restored = Peaks.from_padded_array(padded)

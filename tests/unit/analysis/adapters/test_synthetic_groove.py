@@ -1,3 +1,5 @@
+from typing import Final
+
 import numpy as np
 import pytest
 from hypothesis import given
@@ -9,7 +11,7 @@ from spectra.analysis.domain.feature_frame import FeatureFrame
 from spectra.analysis.domain.tempo import BEATS_PER_BAR, Tempo
 from tests.fakes import FakeClock
 
-TEMPO = Tempo(bpm=128.0)
+TEMPO: Final = Tempo(bpm=128.0)
 
 
 def frame_at(time_s: float, *, seed: int = 0) -> FeatureFrame:

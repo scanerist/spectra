@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from typing import Final
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from spectra.bootstrap.settings import Settings
 from spectra.gateway.wire.frame_codec import PROTOCOL_VERSION, decode_frame
 from spectra.gateway.wire.messages import DirectorLog, Prompt
 
-HELLO = DirectorLog(bar=0, text="engine connected · fake source 128 BPM")
+HELLO: Final = DirectorLog(bar=0, text="engine connected · fake source 128 BPM")
 
 
 @pytest.fixture

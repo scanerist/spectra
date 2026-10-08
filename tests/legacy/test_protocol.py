@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from engine.fake_source import FakeSource
-from engine.protocol import (
+from spectra.legacy.fake_source import FakeSource
+from spectra.legacy.protocol import (
     N_BANDS,
     FeatureFrame,
     Prompt,

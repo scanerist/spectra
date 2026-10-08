@@ -1,6 +1,6 @@
 """FastAPI app. /ws streams FeatureFrame (binary msgpack, 60 Hz) and control messages (JSON).
 
-Run:  uv run uvicorn engine.server:app --reload
+Run:  uv run uvicorn spectra.legacy.server:app --reload
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from engine.fake_source import FakeSource
-from engine.protocol import (
+from spectra.legacy.fake_source import FakeSource
+from spectra.legacy.protocol import (
     PROTOCOL_VERSION,
     ClientMessage,
     DirectorLog,

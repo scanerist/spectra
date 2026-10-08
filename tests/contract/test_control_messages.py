@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import BaseModel
 
-from engine.protocol import (
+from spectra.legacy.protocol import (
     DecksState,
     DirectorLog,
     FrameCapture,

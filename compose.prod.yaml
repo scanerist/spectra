@@ -20,6 +20,7 @@ x-spectra: &spectra
     - ALL
   environment:
     SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
+    SPECTRA_LOG_FORMAT: json
     SPECTRA_MODE: hosted
     SPECTRA_FORWARDED_ALLOW_IPS: "*"
     SPECTRA_UPLOADS_PER_HOUR: ${SPECTRA_UPLOADS_PER_HOUR:-20}

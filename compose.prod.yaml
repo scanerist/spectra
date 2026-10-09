@@ -28,7 +28,7 @@ x-spectra: &spectra
     SPECTRA_S3_URL: http://s3:7070
     SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in the production environment on GitHub}
     SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in the production environment on GitHub}
-  mem_limit: ${SPECTRA_API_MEMORY_LIMIT:-1g}
+  mem_limit: ${SPECTRA_API_MEMORY_LIMIT:-2g}
   pids_limit: 256
 
 services:

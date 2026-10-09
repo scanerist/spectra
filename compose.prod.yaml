@@ -70,7 +70,9 @@ services:
     networks:
       - backend
     healthcheck:
-      disable: true
+      test: ["CMD", "spectra-worker-healthcheck"]
+      start_period: 10s
+      start_interval: 2s
     stop_grace_period: 60s
     mem_limit: ${SPECTRA_WORKER_MEMORY_LIMIT:-2g}
     pids_limit: 256

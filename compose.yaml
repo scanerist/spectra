@@ -22,6 +22,7 @@ x-spectra: &spectra
   environment:
     SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
     SPECTRA_MODE: hosted
+    SPECTRA_METRICS_PORT: 9100
     SPECTRA_POSTGRES_HOST: postgres
     SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     SPECTRA_REDIS_HOST: redis
@@ -67,7 +68,9 @@ services:
     networks:
       - backend
     healthcheck:
-      disable: true
+      test: ["CMD", "spectra-worker-healthcheck"]
+      start_period: 10s
+      start_interval: 2s
     stop_grace_period: 60s
     depends_on:
       migrate:

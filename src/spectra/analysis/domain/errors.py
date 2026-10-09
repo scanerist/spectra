@@ -28,3 +28,7 @@ class InvalidPeaksError(AnalysisError):
 
 class InvalidSignalError(AnalysisError):
     pass
+
+
+class TempoNotFoundError(AnalysisError):
+    pass

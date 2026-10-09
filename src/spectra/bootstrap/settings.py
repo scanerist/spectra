@@ -3,8 +3,6 @@ from enum import StrEnum
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from spectra.analysis.domain.tempo import MAX_BPM, MIN_BPM
-
 
 class LogLevel(StrEnum):
     DEBUG = "DEBUG"
@@ -19,8 +17,6 @@ class Settings(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65_535)
-    frame_rate_hz: float = Field(default=60.0, gt=0.0, allow_inf_nan=False)
-    synthetic_bpm: float = Field(default=128.0, ge=MIN_BPM, le=MAX_BPM)
     log_level: LogLevel = LogLevel.INFO
 
     @field_validator("log_level", mode="before")

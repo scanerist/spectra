@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     max_tracks: int = Field(default=8, ge=1)
     max_pending_analyses: int = Field(default=4, ge=1)
     max_duration_s: float = Field(default=1_800.0, gt=0.0, allow_inf_nan=False)
+    retention_days: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
+    sweep_interval_s: float = Field(default=3_600.0, gt=0.0, allow_inf_nan=False)
 
     @field_validator("log_level", mode="before")
     @classmethod

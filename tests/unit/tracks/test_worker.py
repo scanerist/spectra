@@ -7,7 +7,12 @@ from spectra.analysis.domain.errors import UndecodableAudioError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.adapters.memory import InMemoryBlobStore, InMemoryJobQueue
 from spectra.tracks.application.ports import AnalysisJob
-from spectra.tracks.application.worker import UPLOAD_GONE, AnalysisWorker
+from spectra.tracks.application.worker import (
+    KEEPS_CRASHING,
+    MAX_ATTEMPTS,
+    UPLOAD_GONE,
+    AnalysisWorker,
+)
 from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.track import (
     Analysing,
@@ -222,3 +227,23 @@ async def test_a_job_interrupted_by_a_storage_error_can_be_retried() -> None:
             await worker.run()
     assert isinstance(await board.current(TRACK), Ready)
     assert await blobs.get(upload_key(TRACK)) is None
+
+
+@pytest.mark.anyio
+async def test_a_job_that_keeps_stopping_the_worker_fails_the_track() -> None:
+    board = memory_board()
+    blobs = InMemoryBlobStore()
+    jobs = FakeJobQueue()
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+    )
+    await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
+    await blobs.put(upload_key(TRACK), b"track")
+    job = AnalysisJob(track_id=TRACK, attempt=MAX_ATTEMPTS + 1)
+    await jobs.enqueue(job)
+    await worker.run()
+    assert decoder.decoded == []
+    assert await board.current(TRACK) == KEEPS_CRASHING
+    assert await blobs.get(upload_key(TRACK)) is None
+    assert jobs.finished == [job]

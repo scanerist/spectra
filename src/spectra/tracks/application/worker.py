@@ -29,6 +29,10 @@ SHUT_DOWN: Final = Failed(
     code=FailureCode.INTERNAL, message="the server shut down before analysing the track"
 )
 UPLOAD_GONE: Final = Failed(code=FailureCode.INTERNAL, message="the upload is no longer stored")
+KEEPS_CRASHING: Final = Failed(
+    code=FailureCode.INTERNAL, message="the analysis kept stopping the worker"
+)
+MAX_ATTEMPTS: Final = 3
 
 type StageQueue = asyncio.Queue[AnalysisStage | None]
 type Outcome = tuple[TrackSummary, bytes] | Failed
@@ -58,7 +62,8 @@ class AnalysisWorker:
     async def run(self) -> None:
         while (job := await self._jobs.take()) is not None:
             if await self._is_pending(job.track_id):
-                await self._board.record(job.track_id, await self._process(job))
+                outcome = KEEPS_CRASHING if job.attempt > MAX_ATTEMPTS else await self._process(job)
+                await self._board.record(job.track_id, outcome)
                 await self._evict(keep=job.track_id)
             await self._blobs.delete(upload_key(job.track_id))
             await self._jobs.done(job)

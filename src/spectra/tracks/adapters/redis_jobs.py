@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from redis.asyncio import Redis
@@ -41,6 +41,7 @@ class RedisJobQueue:
         self._block_ms = milliseconds(block_s)
         self._closed = asyncio.Event()
         self._in_flight: dict[TrackId, bytes] = {}
+        self._resumed_own = False
 
     async def ensure_group(self) -> None:
         try:
@@ -62,7 +63,9 @@ class RedisJobQueue:
 
     async def take(self) -> AnalysisJob | None:
         while not self._closed.is_set():
-            delivery = await self._claim_stale() or await self._read_new()
+            delivery = (
+                await self._resume_own() or await self._claim_stale() or await self._read_new()
+            )
             if delivery is not None:
                 job, message_id = delivery
                 self._in_flight[job.track_id] = message_id
@@ -78,6 +81,30 @@ class RedisJobQueue:
         self._closed.set()
         return []
 
+    async def _resume_own(self) -> Delivery | None:
+        if self._resumed_own:
+            return None
+        reply = await self._client.xreadgroup(
+            self._stream.group, self._stream.consumer, {self._stream.key: "0"}, count=1
+        )
+        match reply:
+            case [[_, [entry, *_]], *_]:
+                return await self._counted(delivery_of(entry))
+            case [] | [[_, []], *_] | None:
+                self._resumed_own = True
+                return None
+        raise UnexpectedReplyError(f"unexpected XREADGROUP reply {reply!r}")
+
+    async def _counted(self, delivery: Delivery) -> Delivery:
+        job, message_id = delivery
+        pending = await self._client.xpending_range(
+            self._stream.key, self._stream.group, min=message_id, max=message_id, count=1
+        )
+        match pending:
+            case [{"times_delivered": int() as times_delivered}]:
+                return replace(job, attempt=times_delivered), message_id
+        return delivery
+
     async def _claim_stale(self) -> Delivery | None:
         reply = await self._client.xautoclaim(
             self._stream.key,
@@ -88,7 +115,7 @@ class RedisJobQueue:
         )
         match reply:
             case [_, [entry, *_], *_]:
-                return delivery_of(entry)
+                return await self._counted(delivery_of(entry))
             case [_, [], *_]:
                 return None
         raise UnexpectedReplyError(f"unexpected XAUTOCLAIM reply {reply!r}")

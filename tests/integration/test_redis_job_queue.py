@@ -109,7 +109,33 @@ async def test_a_job_left_by_a_crashed_worker_is_taken_again(
     await crashed.enqueue(job("a"))
     assert await take(crashed) == job("a")
     survivor = await worker_queue(client, stream_key, "b", claim_after_s=0.1)
-    assert await take(survivor) == job("a")
+    assert await take(survivor) == AnalysisJob(track_id=track("a"), attempt=2)
+
+
+async def test_every_redelivery_counts_as_another_attempt(client: Redis, stream_key: str) -> None:
+    first = await worker_queue(client, stream_key, "a")
+    await first.enqueue(job("a"))
+    await take(first)
+    for attempt, consumer in enumerate("bc", start=2):
+        survivor = await worker_queue(client, stream_key, consumer, claim_after_s=0.05)
+        taken = await take(survivor)
+        assert taken is not None
+        assert taken.attempt == attempt
+
+
+async def test_a_restarted_worker_resumes_its_own_unfinished_job(
+    client: Redis, stream_key: str
+) -> None:
+    before = await worker_queue(client, stream_key, "a")
+    await before.enqueue(job("a"))
+    await before.enqueue(job("b"))
+    assert await take(before) == job("a")
+    after = await worker_queue(client, stream_key, "a")
+    resumed = await take(after)
+    assert resumed is not None
+    assert resumed.track_id == track("a")
+    await after.done(resumed)
+    assert await take(after) == job("b")
 
 
 async def test_ensuring_the_group_again_keeps_queued_jobs(client: Redis, stream_key: str) -> None:

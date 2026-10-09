@@ -12,6 +12,7 @@ type TimelineEncoder = Callable[[TrackAnalysis], bytes]
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AnalysisJob:
     track_id: TrackId
+    attempt: int = 1
 
 
 class JobQueue(Protocol):

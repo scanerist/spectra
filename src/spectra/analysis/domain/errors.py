@@ -24,3 +24,7 @@ class OutOfRangeError(AnalysisError):
 
 class InvalidPeaksError(AnalysisError):
     pass
+
+
+class InvalidSignalError(AnalysisError):
+    pass

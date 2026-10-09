@@ -1,0 +1,56 @@
+import pytest
+
+from spectra.tracks.adapters.memory import (
+    InMemoryBlobStore,
+    InMemoryProgressFeed,
+    InMemoryTrackStore,
+)
+from spectra.tracks.application.janitor import SWEEP_BATCH_SIZE, Janitor
+from spectra.tracks.application.status_board import StatusBoard
+from spectra.tracks.domain.blobs import timeline_key, upload_key
+from spectra.tracks.domain.track import TrackId
+from tests.fakes import FakeTrackExpiry
+from tests.statuses import READY, track
+
+DAY_S = 86_400.0
+RETENTION_S = 30 * DAY_S
+
+
+async def janitor_for(
+    unseen_s: dict[TrackId, float], *, capacity: int = 8
+) -> tuple[Janitor, StatusBoard, InMemoryBlobStore, FakeTrackExpiry]:
+    store = InMemoryTrackStore(capacity=capacity)
+    board = StatusBoard(store=store, feed=InMemoryProgressFeed())
+    blobs = InMemoryBlobStore()
+    for track_id in unseen_s:
+        await board.record(track_id, READY)
+        await blobs.put(timeline_key(track_id), b"timeline")
+        await blobs.put(upload_key(track_id), b"upload")
+    expiry = FakeTrackExpiry(store, unseen_s=unseen_s)
+    janitor = Janitor(expiry=expiry, blobs=blobs, retention_s=RETENTION_S)
+    return janitor, board, blobs, expiry
+
+
+@pytest.mark.anyio
+async def test_a_track_unseen_past_retention_is_removed_with_its_blobs() -> None:
+    janitor, board, blobs, _ = await janitor_for({track("old"): 31 * DAY_S})
+    assert await janitor.sweep() == 1
+    assert await board.find(track("old")) is None
+    assert await blobs.get(timeline_key(track("old"))) is None
+    assert await blobs.get(upload_key(track("old"))) is None
+
+
+@pytest.mark.anyio
+async def test_a_recently_seen_track_is_kept() -> None:
+    janitor, board, blobs, _ = await janitor_for({track("new"): 29 * DAY_S})
+    assert await janitor.sweep() == 0
+    assert await board.find(track("new")) == READY
+    assert await blobs.get(timeline_key(track("new"))) == b"timeline"
+
+
+@pytest.mark.anyio
+async def test_sweeping_continues_past_one_batch() -> None:
+    unseen_s = {track(f"old-{index}"): 40 * DAY_S for index in range(SWEEP_BATCH_SIZE + 3)}
+    janitor, _, _, expiry = await janitor_for(unseen_s, capacity=len(unseen_s))
+    assert await janitor.sweep() == SWEEP_BATCH_SIZE + 3
+    assert expiry.limits == [SWEEP_BATCH_SIZE] * 3

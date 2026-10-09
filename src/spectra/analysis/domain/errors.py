@@ -24,3 +24,35 @@ class OutOfRangeError(AnalysisError):
 
 class InvalidPeaksError(AnalysisError):
     pass
+
+
+class InvalidSignalError(AnalysisError):
+    pass
+
+
+class TempoNotFoundError(AnalysisError):
+    pass
+
+
+class InvalidBeatGridError(AnalysisError):
+    pass
+
+
+class InvalidSectionError(AnalysisError):
+    pass
+
+
+class UnanalysableSignalError(AnalysisError):
+    pass
+
+
+class InvalidTrackAnalysisError(AnalysisError):
+    pass
+
+
+class UnsupportedFormatError(AnalysisError):
+    pass
+
+
+class UndecodableAudioError(AnalysisError):
+    pass

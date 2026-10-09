@@ -1,16 +1,13 @@
 import asyncio
-from collections.abc import Callable, Sequence
 
-import numpy as np
-
-from spectra.analysis.domain.feature_frame import FeatureFrame
-from spectra.analysis.domain.levels import Levels
-from spectra.analysis.domain.peaks import Peak, Peaks
-from spectra.analysis.domain.spectrum import BAND_COUNT, Spectrum
-from spectra.analysis.domain.tempo import BeatPosition, Tempo
-from spectra.analysis.domain.waveform import WAVEFORM_LENGTH, Waveform
-from spectra.gateway.errors import ClientDisconnectedError, UnreadableClientFrameError
-from spectra.gateway.wire.messages import ClientMessage, ServerMessage
+from spectra.analysis.application.ports import AudioFormat, AudioProbe
+from spectra.analysis.domain.signal import AudioSignal
+from spectra.analysis.domain.track_analysis import TrackAnalysis
+from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
+from spectra.tracks.application.ports import AnalysisJob
+from spectra.tracks.application.status_board import StatusBoard
+from spectra.tracks.domain.quota import QuotaDecision
+from spectra.tracks.domain.track import TrackId, TrackStatus
 
 
 class FakeClock:
@@ -33,81 +30,121 @@ class FakeClock:
         await asyncio.sleep(0)
 
 
-def frame_at_bar(bar: int) -> FeatureFrame:
-    return FeatureFrame(
-        time_s=1.0,
-        spectrum=Spectrum(bands=np.full(BAND_COUNT, 0.25, dtype=np.float32)),
-        waveform=Waveform(samples=np.zeros(WAVEFORM_LENGTH, dtype=np.float32)),
-        peaks=Peaks(items=(Peak(freq_hz=55.0, amplitude=1.0, phase_rad=0.0),)),
-        levels=Levels(kick=1.0, bass=0.5, mid=0.25, high=0.0),
-        tempo=Tempo(bpm=128.0),
-        position=BeatPosition(bar=bar, beat_in_bar=0, phase=0.0),
-        energy=0.5,
-    )
+class FakeDecoder:
+    def __init__(
+        self,
+        *,
+        signal: AudioSignal | None = None,
+        probe_error: Exception | None = None,
+        decode_error: Exception | None = None,
+        duration_s: float = 180.0,
+    ) -> None:
+        self._signal = signal
+        self._duration_s = duration_s
+        self._probe_error = probe_error
+        self._decode_error = decode_error
+        self.decoded: list[bytes] = []
+
+    def probe(self, data: bytes) -> AudioProbe:
+        if self._probe_error is not None:
+            raise self._probe_error
+        audio_format = AudioFormat.WAV if data else AudioFormat.MP3
+        return AudioProbe(audio_format=audio_format, duration_s=self._duration_s)
+
+    def decode(self, data: bytes) -> AudioSignal:
+        self.decoded.append(data)
+        if self._decode_error is not None:
+            raise self._decode_error
+        if self._signal is None:
+            raise AssertionError("FakeDecoder has no signal to return")
+        return self._signal
 
 
-class StaticFeatureSource:
-    def __init__(self, frame: FeatureFrame) -> None:
-        self.frame = frame
+class FakeJobQueue:
+    def __init__(self, *, enqueue_error: Exception | None = None) -> None:
+        self.jobs: list[AnalysisJob] = []
+        self.finished: list[AnalysisJob] = []
+        self.enqueue_error = enqueue_error
 
-    def latest(self) -> FeatureFrame:
-        return self.frame
+    async def enqueue(self, job: AnalysisJob) -> None:
+        if self.enqueue_error is not None:
+            raise self.enqueue_error
+        self.jobs.append(job)
 
+    async def take(self) -> AnalysisJob | None:
+        return self.jobs.pop(0) if self.jobs else None
 
-class FakeConnection:
-    def __init__(self, *, frames_until_disconnect: int | None = None) -> None:
-        self.sent: list[str | bytes] = []
-        self._incoming: asyncio.Queue[str | bytes | None] = asyncio.Queue()
-        self._frames_until_disconnect = frames_until_disconnect
-        self._sent_more = asyncio.Condition()
+    async def done(self, job: AnalysisJob) -> None:
+        self.finished.append(job)
 
-    @property
-    def texts(self) -> list[str]:
-        return [item for item in self.sent if isinstance(item, str)]
-
-    @property
-    def frames(self) -> list[bytes]:
-        return [item for item in self.sent if isinstance(item, bytes)]
-
-    def feed(self, message: str | bytes) -> None:
-        self._incoming.put_nowait(message)
-
-    def disconnect(self) -> None:
-        self._incoming.put_nowait(None)
-
-    async def receive_text(self) -> str:
-        match await self._incoming.get():
-            case None:
-                raise ClientDisconnectedError("fake client left")
-            case bytes():
-                raise UnreadableClientFrameError("fake client sent a binary frame")
-            case str() as text:
-                return text
-
-    async def wait_until(self, condition: Callable[[], bool]) -> None:
-        async with self._sent_more:
-            await self._sent_more.wait_for(condition)
-
-    async def send_text(self, text: str) -> None:
-        await self._record(text)
-
-    async def send_bytes(self, data: bytes) -> None:
-        limit = self._frames_until_disconnect
-        if limit is not None and len(self.frames) >= limit:
-            raise ClientDisconnectedError("fake client stopped reading")
-        await self._record(data)
-
-    async def _record(self, item: str | bytes) -> None:
-        self.sent.append(item)
-        async with self._sent_more:
-            self._sent_more.notify_all()
+    async def close(self) -> list[AnalysisJob]:
+        return []
 
 
-class RecordingHandler:
-    def __init__(self, replies: Sequence[ServerMessage] = ()) -> None:
-        self.received: list[ClientMessage] = []
-        self._replies = replies
+class FakeTrackExpiry:
+    def __init__(self, store: InMemoryTrackStore, *, unseen_s: dict[TrackId, float]) -> None:
+        self._store = store
+        self._unseen_s = unseen_s
+        self.limits: list[int] = []
 
-    def handle(self, message: ClientMessage) -> Sequence[ServerMessage]:
-        self.received.append(message)
-        return self._replies
+    async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
+        self.limits.append(limit)
+        oldest_first = sorted(self._unseen_s.items(), key=lambda item: -item[1])
+        stale = [
+            track_id
+            for track_id, unseen_s in oldest_first
+            if unseen_s > unseen_for_s and await self._store.find(track_id) is not None
+        ][:limit]
+        for track_id in stale:
+            await self._store.delete(track_id)
+        return stale
+
+
+def memory_board(*, capacity: int = 8) -> StatusBoard:
+    return StatusBoard(store=InMemoryTrackStore(capacity=capacity), feed=InMemoryProgressFeed())
+
+
+def record_now(board: StatusBoard, track_id: TrackId, status: TrackStatus) -> None:
+    asyncio.run(board.record(track_id, status))
+
+
+def fake_timeline(analysis: TrackAnalysis) -> bytes:
+    return f"timeline of {analysis.frame_count} frames".encode()
+
+
+class UnlimitedQuota:
+    def __init__(self) -> None:
+        self.clients: list[str] = []
+        self.refunds: list[str] = []
+
+    async def refund(self, client: str) -> None:
+        self.refunds.append(client)
+
+    async def spend(self, client: str) -> QuotaDecision:
+        self.clients.append(client)
+        return QuotaDecision(allowed=True, retry_after_s=0.0)
+
+
+class ExhaustedQuota:
+    def __init__(self, *, retry_after_s: float) -> None:
+        self._retry_after_s = retry_after_s
+
+        self.clients: list[str] = []
+
+    async def spend(self, client: str) -> QuotaDecision:
+        self.clients.append(client)
+        return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
+
+    async def refund(self, client: str) -> None:
+        pass
+
+
+class RecordingObserver:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, TrackId, TrackStatus | None]] = []
+
+    def started(self, track_id: TrackId) -> None:
+        self.events.append(("started", track_id, None))
+
+    def finished(self, track_id: TrackId, outcome: TrackStatus) -> None:
+        self.events.append(("finished", track_id, outcome))

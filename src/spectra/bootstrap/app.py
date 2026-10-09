@@ -18,6 +18,7 @@ from spectra.bootstrap.tracks import (
 )
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.readiness import Readiness, install_readiness
+from spectra.gateway.request_metrics import install_request_metrics
 from spectra.gateway.routes import (
     create_router,
     install_track_service,
@@ -25,6 +26,7 @@ from spectra.gateway.routes import (
 )
 from spectra.gateway.security_headers import install_security_headers
 from spectra.gateway.upload_limit import install_upload_limit
+from spectra.shared.clock import MonotonicClock
 from spectra.tracks.application.admission import UploadAdmission
 
 
@@ -71,6 +73,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
     install_error_handlers(app)
     install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)
     install_security_headers(app)
+    install_request_metrics(app, registry=registry, clock=MonotonicClock())
     return app
 
 

@@ -68,15 +68,17 @@ web/src/
   contract/   timeline decoder, API client, lookup by playback time: the browser side of docs/CONTRACT.md
   view/       pure display logic: strongest bands, band history, eased bar spectra
   pixel/      pixel canvas and line primitives (Bresenham, no antialiasing)
-  audio/      playback through Web Audio and the AnalyserNode
+  audio/      playback streamed from the file by a media element, routed through Web Audio and the AnalyserNode
   screens/    start, loading, main, analysis
-  app/        router, pixel dissolve, wiring
+  app/        router, pixel dissolve, loading session, wiring
 ```
 
 - The same code style applies: no comments, units in names (`time_s`, `freq_hz`), small functions, no module-level mutable state.
 - TypeScript strict with `noUncheckedIndexedAccess`; no `any`, no non-null assertions outside DOM lookups at startup.
 - Pure logic lives outside the screens and is tested with Vitest; screens only wire DOM, canvas and state.
 - The timeline decoder is tested against the same golden file as the engine: `tests/contract/golden/timeline_v1.bin`.
+- The client checks `protocol` from `GET /health` before every upload and asks for a reload on a mismatch.
+- The browser never decodes a whole track into memory: playback streams from a blob URL.
 
 ## Testing — TDD
 

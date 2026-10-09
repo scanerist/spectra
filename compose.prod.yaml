@@ -314,7 +314,7 @@ configs:
                   "type": "prometheus",
                   "uid": "prometheus"
                 },
-                "expr": "sum by (status) (rate(spectra_http_requests_total{method=\"POST\", route=\"/tracks\"}[$$__rate_interval])) * 60",
+                "expr": "sum by (status) (rate(spectra_http_requests_total{method=\"POST\"}[$$__rate_interval])) * 60",
                 "legendFormat": "{{status}}"
               }
             ]

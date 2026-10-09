@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.application.ports import AnalysisJob, JobQueue
-from spectra.tracks.application.registry import TrackRegistry
+from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.errors import (
     AnalysisQueueFullError,
     EmptyUploadError,
@@ -27,12 +27,12 @@ class TrackService:
         self,
         *,
         decoder: AudioDecoder,
-        registry: TrackRegistry,
+        board: StatusBoard,
         jobs: JobQueue,
         limits: UploadLimits,
     ) -> None:
         self._decoder = decoder
-        self._registry = registry
+        self._board = board
         self._jobs = jobs
         self._limits = limits
 
@@ -48,12 +48,12 @@ class TrackService:
                 f"the upload is larger than {self._limits.max_upload_bytes} bytes"
             )
         track_id = await asyncio.to_thread(self._inspect, data)
-        known = self._registry.find(track_id)
+        known = await self._board.find(track_id)
         if known is not None and not isinstance(known, Failed):
             return track_id
-        if self._registry.analysing_count() >= self._limits.max_pending:
+        if await self._board.analysing_count() >= self._limits.max_pending:
             raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
-        self._registry.put(track_id, Analysing.at(AnalysisStage.DECODING))
+        await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
         self._jobs.enqueue(AnalysisJob(track_id=track_id, data=data))
         return track_id
 
@@ -66,8 +66,8 @@ class TrackService:
             )
         return TrackId.of_content(data)
 
-    def status(self, track_id: TrackId) -> TrackStatus:
-        return self._registry.status(track_id)
+    async def status(self, track_id: TrackId) -> TrackStatus:
+        return await self._board.current(track_id)
 
     def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
-        return self._registry.watch(track_id)
+        return self._board.watch(track_id)

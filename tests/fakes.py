@@ -2,7 +2,10 @@ import asyncio
 
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
+from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
+from spectra.tracks.application.status_board import StatusBoard
+from spectra.tracks.domain.track import TrackId, TrackStatus
 
 
 class FakeClock:
@@ -61,3 +64,11 @@ class FakeJobQueue:
 
     def enqueue(self, job: AnalysisJob) -> None:
         self.jobs.append(job)
+
+
+def memory_board(*, capacity: int = 8) -> StatusBoard:
+    return StatusBoard(store=InMemoryTrackStore(capacity=capacity), feed=InMemoryProgressFeed())
+
+
+def record_now(board: StatusBoard, track_id: TrackId, status: TrackStatus) -> None:
+    asyncio.run(board.record(track_id, status))

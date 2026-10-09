@@ -10,11 +10,10 @@ from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
-from spectra.tracks.application.registry import TrackRegistry
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
 from tests.contract.timeline_fixture import golden_analysis
-from tests.fakes import FakeDecoder, FakeJobQueue
+from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, record_now
 
 DATA: Final = b"RIFF pretend this is audio"
 LIMIT_BYTES: Final = 1_000
@@ -22,11 +21,11 @@ LIMIT_BYTES: Final = 1_000
 
 class Api:
     def __init__(self, *, decoder: FakeDecoder | None = None) -> None:
-        self.registry = TrackRegistry(capacity=8)
+        self.board = memory_board()
         self.jobs = FakeJobQueue()
         service = TrackService(
             decoder=decoder or FakeDecoder(),
-            registry=self.registry,
+            board=self.board,
             jobs=self.jobs,
             limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
         )
@@ -135,7 +134,7 @@ def test_unknown_track_is_track_not_found(api: Api, path: str, track_id: str) ->
 )
 def test_running_analysis_is_not_ready(api: Api, path: str) -> None:
     track = TrackId.of_content(DATA)
-    api.registry.put(track, Analysing.at(AnalysisStage.TEMPO))
+    record_now(api.board, track, Analysing.at(AnalysisStage.TEMPO))
     response = api.client.get(path.format(id=track.value))
     assert response.status_code == 409
     assert response.json()["error"] == "not_ready"
@@ -152,7 +151,7 @@ def test_running_analysis_is_not_ready(api: Api, path: str) -> None:
 )
 def test_failed_analysis_returns_its_error(api: Api, code: FailureCode, http_status: int) -> None:
     track = TrackId.of_content(DATA)
-    api.registry.put(track, Failed(code=code, message="why"))
+    record_now(api.board, track, Failed(code=code, message="why"))
     response = api.client.get(f"/tracks/{track.value}")
     assert response.status_code == http_status
     assert response.json() == {"error": code.value, "message": "why"}
@@ -161,7 +160,7 @@ def test_failed_analysis_returns_its_error(api: Api, code: FailureCode, http_sta
 def test_ready_track_metadata_matches_the_contract(api: Api) -> None:
     track = TrackId.of_content(DATA)
     analysis = golden_analysis()
-    api.registry.put(track, Ready(analysis=analysis))
+    record_now(api.board, track, Ready(analysis=analysis))
     response = api.client.get(f"/tracks/{track.value}")
     assert response.status_code == 200
     assert response.json() == {
@@ -176,7 +175,7 @@ def test_ready_track_metadata_matches_the_contract(api: Api) -> None:
 def test_ready_track_timeline_is_the_encoded_analysis(api: Api) -> None:
     track = TrackId.of_content(DATA)
     analysis = golden_analysis()
-    api.registry.put(track, Ready(analysis=analysis))
+    record_now(api.board, track, Ready(analysis=analysis))
     response = api.client.get(f"/tracks/{track.value}/timeline")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"

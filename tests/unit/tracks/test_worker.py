@@ -5,7 +5,6 @@ import pytest
 from spectra.analysis.domain.errors import UndecodableAudioError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.application.ports import AnalysisJob
-from spectra.tracks.application.registry import TrackRegistry
 from spectra.tracks.application.worker import AnalysisWorker
 from spectra.tracks.domain.track import (
     Analysing,
@@ -15,21 +14,21 @@ from spectra.tracks.domain.track import (
     TrackId,
     TrackStatus,
 )
-from tests.fakes import FakeDecoder
+from tests.fakes import FakeDecoder, memory_board
 from tests.signals import kick_train, signal_of, silence
 
 TRACK = TrackId.of_content(b"track")
 
 
 async def statuses_of(decoder: FakeDecoder) -> list[TrackStatus]:
-    registry = TrackRegistry(capacity=4)
-    worker = AnalysisWorker(decoder=decoder, registry=registry)
-    registry.put(TRACK, Analysing.at(AnalysisStage.DECODING))
+    board = memory_board()
+    worker = AnalysisWorker(decoder=decoder, board=board)
+    await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     seen: list[TrackStatus] = []
 
     async def follow() -> None:
-        seen.extend([status async for status in registry.watch(TRACK)])
-        worker.close()
+        seen.extend([status async for status in board.watch(TRACK)])
+        await worker.close()
 
     async with asyncio.TaskGroup() as group:
         group.create_task(follow())
@@ -62,17 +61,17 @@ async def test_silent_track_fails_as_analysis_failed() -> None:
 
 @pytest.mark.anyio
 async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
-    registry = TrackRegistry(capacity=8)
+    board = memory_board()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
-    worker = AnalysisWorker(decoder=decoder, registry=registry)
+    worker = AnalysisWorker(decoder=decoder, board=board)
     queued = [TrackId.of_content(name) for name in (b"one", b"two")]
     for track in queued:
-        registry.put(track, Analysing.at(AnalysisStage.DECODING))
+        await board.record(track, Analysing.at(AnalysisStage.DECODING))
         worker.enqueue(AnalysisJob(track_id=track, data=track.value.encode()))
-    worker.close()
+    await worker.close()
     await worker.run()
     assert decoder.decoded == []
-    assert all(isinstance(registry.status(track), Failed) for track in queued)
+    assert all([isinstance(await board.current(track), Failed) for track in queued])
 
 
 @pytest.mark.anyio

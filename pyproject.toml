@@ -101,7 +101,7 @@ layers = ["adapters", "application", "domain"]
 name = "Tracks context layering"
 type = "layers"
 containers = ["spectra.tracks"]
-layers = ["application", "domain"]
+layers = ["adapters", "application", "domain"]
 
 [[tool.importlinter.contracts]]
 name = "Analysis domain stays pure"
@@ -120,5 +120,11 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Gateway does not know concrete adapters"
 type = "forbidden"
-source_modules = ["spectra.gateway", "spectra.tracks"]
-forbidden_modules = ["spectra.analysis.adapters"]
+source_modules = ["spectra.gateway"]
+forbidden_modules = ["spectra.analysis.adapters", "spectra.tracks.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "Tracks application does not know concrete adapters"
+type = "forbidden"
+source_modules = ["spectra.tracks.application", "spectra.tracks.domain"]
+forbidden_modules = ["spectra.analysis.adapters", "spectra.tracks.adapters"]

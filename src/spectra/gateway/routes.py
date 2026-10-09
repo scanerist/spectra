@@ -60,9 +60,9 @@ async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     return b"".join(chunks)
 
 
-def ready_analysis(service: TrackService, track_id: str) -> tuple[TrackId, TrackAnalysis]:
+async def ready_analysis(service: TrackService, track_id: str) -> tuple[TrackId, TrackAnalysis]:
     track = TrackId(track_id)
-    match service.status(track):
+    match await service.status(track):
         case Ready(analysis=analysis):
             return track, analysis
         case Analysing():
@@ -88,13 +88,13 @@ def create_router() -> APIRouter:
 
     @router.get("/tracks/{track_id}")
     async def get_track(track_id: str, service: Service) -> TrackInfo:
-        track, analysis = ready_analysis(service, track_id)
+        track, analysis = await ready_analysis(service, track_id)
         return track_info(track, analysis)
 
     @router.get("/tracks/{track_id}/events")
     async def track_events(track_id: str, service: Service) -> StreamingResponse:
         track = TrackId(track_id)
-        service.status(track)
+        await service.status(track)
         return StreamingResponse(
             status_events(track, service.watch(track)),
             media_type=EVENT_STREAM_MEDIA_TYPE,
@@ -103,7 +103,7 @@ def create_router() -> APIRouter:
 
     @router.get("/tracks/{track_id}/timeline")
     async def get_timeline(track_id: str, service: Service) -> Response:
-        _, analysis = ready_analysis(service, track_id)
+        _, analysis = await ready_analysis(service, track_id)
         timeline = await asyncio.to_thread(encode_timeline, analysis)
         return Response(content=timeline, media_type=TIMELINE_MEDIA_TYPE)
 

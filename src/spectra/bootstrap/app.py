@@ -12,8 +12,9 @@ from spectra.bootstrap.settings import LogLevel, Settings
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.upload_limit import install_upload_limit
-from spectra.tracks.application.registry import TrackRegistry
+from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.service import TrackService, UploadLimits
+from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.application.worker import AnalysisWorker
 
 LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -22,11 +23,13 @@ LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 def create_app(settings: Settings) -> FastAPI:
     configure_logging(settings.log_level)
     decoder = SoundfileDecoder()
-    registry = TrackRegistry(capacity=settings.max_tracks)
-    worker = AnalysisWorker(decoder=decoder, registry=registry)
+    board = StatusBoard(
+        store=InMemoryTrackStore(capacity=settings.max_tracks), feed=InMemoryProgressFeed()
+    )
+    worker = AnalysisWorker(decoder=decoder, board=board)
     service = TrackService(
         decoder=decoder,
-        registry=registry,
+        board=board,
         jobs=worker,
         limits=UploadLimits(
             max_upload_bytes=settings.max_upload_bytes,
@@ -40,7 +43,7 @@ def create_app(settings: Settings) -> FastAPI:
         async with asyncio.TaskGroup() as group:
             group.create_task(worker.run())
             yield
-            worker.close()
+            await worker.close()
 
     app = FastAPI(title="spectra engine", lifespan=lifespan)
     app.include_router(create_router())

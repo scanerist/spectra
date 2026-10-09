@@ -2,8 +2,8 @@ import pytest
 
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
-from spectra.tracks.application.registry import TrackRegistry
 from spectra.tracks.application.service import TrackService, UploadLimits
+from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.errors import (
     AnalysisQueueFullError,
     EmptyUploadError,
@@ -12,7 +12,7 @@ from spectra.tracks.domain.errors import (
     TrackTooLongError,
 )
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, TrackId
-from tests.fakes import FakeDecoder, FakeJobQueue
+from tests.fakes import FakeDecoder, FakeJobQueue, memory_board
 
 DATA = b"RIFF fake wav bytes"
 MAX_DURATION_S = 600.0
@@ -21,12 +21,12 @@ MAX_PENDING = 2
 
 def service_with(
     decoder: FakeDecoder | None = None, *, max_upload_bytes: int = 1_000
-) -> tuple[TrackService, TrackRegistry, FakeJobQueue]:
-    registry = TrackRegistry(capacity=8)
+) -> tuple[TrackService, StatusBoard, FakeJobQueue]:
+    board = memory_board()
     jobs = FakeJobQueue()
     service = TrackService(
         decoder=decoder or FakeDecoder(),
-        registry=registry,
+        board=board,
         jobs=jobs,
         limits=UploadLimits(
             max_upload_bytes=max_upload_bytes,
@@ -34,7 +34,7 @@ def service_with(
             max_pending=MAX_PENDING,
         ),
     )
-    return service, registry, jobs
+    return service, board, jobs
 
 
 @pytest.mark.anyio
@@ -42,7 +42,7 @@ async def test_submit_registers_decoding_and_queues_one_job() -> None:
     service, _, jobs = service_with()
     track_id = await service.submit(DATA)
     assert track_id == TrackId.of_content(DATA)
-    assert service.status(track_id) == Analysing.at(AnalysisStage.DECODING)
+    assert await service.status(track_id) == Analysing.at(AnalysisStage.DECODING)
     assert [(job.track_id, job.data) for job in jobs.jobs] == [(track_id, DATA)]
 
 
@@ -55,12 +55,12 @@ async def test_same_file_reuses_the_track_without_a_second_job() -> None:
 
 @pytest.mark.anyio
 async def test_failed_track_is_analysed_again_on_upload() -> None:
-    service, registry, jobs = service_with()
+    service, board, jobs = service_with()
     track_id = await service.submit(DATA)
-    registry.put(track_id, Failed(code=FailureCode.UNDECODABLE, message="bad"))
+    await board.record(track_id, Failed(code=FailureCode.UNDECODABLE, message="bad"))
     await service.submit(DATA)
     assert len(jobs.jobs) == 2
-    assert service.status(track_id) == Analysing.at(AnalysisStage.DECODING)
+    assert await service.status(track_id) == Analysing.at(AnalysisStage.DECODING)
 
 
 @pytest.mark.anyio
@@ -106,4 +106,4 @@ async def test_unsupported_format_is_rejected_before_registering() -> None:
         await service.submit(DATA)
     assert jobs.jobs == []
     with pytest.raises(TrackNotFoundError):
-        service.status(TrackId.of_content(DATA))
+        await service.status(TrackId.of_content(DATA))

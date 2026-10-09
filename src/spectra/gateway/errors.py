@@ -5,7 +5,10 @@ from http import HTTPStatus
 from typing import Final
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+from starlette.exceptions import HTTPException
 
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.gateway.schemas import ErrorBody
@@ -86,6 +89,18 @@ async def handle_unexpected_error(_request: Request, error: Exception) -> JSONRe
     return error_response(ErrorCode.INTERNAL, "internal server error")
 
 
+async def handle_unreadable_request(_request: Request, _error: Exception) -> JSONResponse:
+    return error_response(ErrorCode.NO_FILE, "the request has no readable file part")
+
+
+async def handle_http_error(request: Request, error: Exception) -> Response:
+    if isinstance(error, HTTPException) and error.status_code == HTTPStatus.BAD_REQUEST:
+        return error_response(ErrorCode.NO_FILE, str(error.detail))
+    if not isinstance(error, HTTPException):
+        return await handle_unexpected_error(request, error)
+    return await http_exception_handler(request, error)
+
+
 def domain_handler(code: ErrorCode) -> Callable[[Request, Exception], JSONResponse]:
     def handle(_request: Request, error: Exception) -> JSONResponse:
         return error_response(code, str(error))
@@ -95,6 +110,8 @@ def domain_handler(code: ErrorCode) -> Callable[[Request, Exception], JSONRespon
 
 def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ApiError, handle_api_error)
+    app.add_exception_handler(RequestValidationError, handle_unreadable_request)
+    app.add_exception_handler(HTTPException, handle_http_error)
     for error_type, code in DOMAIN_ERRORS.items():
         app.add_exception_handler(error_type, domain_handler(code))
     app.add_exception_handler(Exception, handle_unexpected_error)

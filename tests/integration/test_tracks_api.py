@@ -54,6 +54,25 @@ def test_upload_without_a_file_part_is_no_file(api: Api) -> None:
     assert response.json()["error"] == "no_file"
 
 
+@pytest.mark.parametrize(
+    ("body", "content_type"),
+    [
+        (b'--b\r\nContent-Disposition: form-data; name="file"\r\n\r\nRIFF\r\n--b--\r\n', "b"),
+        (b"--b\r\ngarbage without headers", "b"),
+        (b"file=RIFF", None),
+    ],
+    ids=["part-without-filename", "broken-multipart", "missing-boundary"],
+)
+def test_unreadable_upload_is_no_file_in_the_contract_body(
+    api: Api, body: bytes, content_type: str | None
+) -> None:
+    header = "multipart/form-data" + (f"; boundary={content_type}" if content_type else "")
+    response = api.client.post("/tracks", content=body, headers={"content-type": header})
+    assert response.status_code == 400
+    assert response.json()["error"] == "no_file"
+    assert set(response.json()) == {"error", "message"}
+
+
 def test_empty_upload_is_no_file(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("t.wav", b"", "audio/wav")})
     assert response.status_code == 400

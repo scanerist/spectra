@@ -1,7 +1,7 @@
 [project]
 name = "spectra"
 version = "0.1.0"
-description = "Audio-reactive visualizer for techno: a real-time Python engine streaming features to a browser renderer"
+description = "Music visualizer that analyses a whole track once and draws its spectrum, tempo and structure in pixel art"
 authors = [
     { name = "MANOGER", email = "aliyevm28@gmail.com" }
 ]

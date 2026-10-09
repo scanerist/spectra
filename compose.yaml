@@ -24,12 +24,12 @@ x-spectra: &spectra
     SPECTRA_MODE: hosted
     SPECTRA_METRICS_PORT: 9100
     SPECTRA_POSTGRES_HOST: postgres
-    SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
     SPECTRA_REDIS_HOST: redis
-    SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     SPECTRA_S3_URL: http://s3:7070
-    SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
-    SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+    SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?}
 
 services:
   migrate:
@@ -82,7 +82,7 @@ services:
     environment:
       POSTGRES_DB: spectra
       POSTGRES_USER: spectra
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
     networks:
       - backend
     volumes:
@@ -101,9 +101,9 @@ services:
       - --appendonly
       - "yes"
       - --requirepass
-      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - ${REDIS_PASSWORD:?}
     environment:
-      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?}
     networks:
       - backend
     volumes:
@@ -122,8 +122,8 @@ services:
       VGW_BACKEND_ARGS: /data/s3
       VGW_IAM_DIR: /data/iam
       VGW_PORT: ":7070"
-      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
-      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?}
     networks:
       - backend
     volumes:

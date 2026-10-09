@@ -116,3 +116,7 @@ class InMemoryUploadQuota:
             self._used.clear()
         self._used[client] = self._used.get(client, 0) + 1
         return self._policy.decide(used=self._used[client], now_s=now_s)
+
+    async def refund(self, client: str) -> None:
+        if self._policy.window_of(self._clock.now_s()) == self._window and self._used.get(client):
+            self._used[client] -= 1

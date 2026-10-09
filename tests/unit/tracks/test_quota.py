@@ -62,3 +62,21 @@ async def test_admission_refuses_a_client_over_its_quota() -> None:
     with pytest.raises(UploadQuotaExceededError) as refused:
         await admission.admit("1.2.3.4")
     assert refused.value.retry_after_s == 12.5
+
+
+@pytest.mark.anyio
+async def test_a_refunded_upload_frees_its_place() -> None:
+    quota = InMemoryUploadQuota(policy=POLICY, clock=FakeClock(start_s=100.0))
+    for _ in range(3):
+        await quota.spend("1.2.3.4")
+    await quota.refund("1.2.3.4")
+    assert (await quota.spend("1.2.3.4")).allowed
+    assert not (await quota.spend("1.2.3.4")).allowed
+
+
+@pytest.mark.anyio
+async def test_a_refund_without_uploads_changes_nothing() -> None:
+    quota = InMemoryUploadQuota(policy=POLICY, clock=FakeClock(start_s=100.0))
+    await quota.refund("1.2.3.4")
+    decisions = [await quota.spend("1.2.3.4") for _ in range(4)]
+    assert [decision.allowed for decision in decisions] == [True, True, True, False]

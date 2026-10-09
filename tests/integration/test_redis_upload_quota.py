@@ -63,3 +63,18 @@ async def test_counters_expire_with_their_window(client: Redis) -> None:
     keys = [key async for key in client.scan_iter(match=f"{prefix}*")]
     assert len(keys) == 1
     assert 0 < await client.ttl(keys[0]) <= 3_600
+
+
+async def test_a_refunded_upload_frees_its_place(client: Redis) -> None:
+    single = quota(client, uploads=1, window_s=3_600.0)
+    await single.spend("1.2.3.4")
+    await single.refund("1.2.3.4")
+    assert (await single.spend("1.2.3.4")).allowed
+    assert not (await single.spend("1.2.3.4")).allowed
+
+
+async def test_a_refund_without_uploads_changes_nothing(client: Redis) -> None:
+    single = quota(client, uploads=1, window_s=3_600.0)
+    await single.refund("1.2.3.4")
+    assert (await single.spend("1.2.3.4")).allowed
+    assert not (await single.spend("1.2.3.4")).allowed

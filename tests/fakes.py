@@ -115,6 +115,10 @@ def fake_timeline(analysis: TrackAnalysis) -> bytes:
 class UnlimitedQuota:
     def __init__(self) -> None:
         self.clients: list[str] = []
+        self.refunds: list[str] = []
+
+    async def refund(self, client: str) -> None:
+        self.refunds.append(client)
 
     async def spend(self, client: str) -> QuotaDecision:
         self.clients.append(client)
@@ -130,6 +134,9 @@ class ExhaustedQuota:
     async def spend(self, client: str) -> QuotaDecision:
         self.clients.append(client)
         return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
+
+    async def refund(self, client: str) -> None:
+        pass
 
 
 class RecordingObserver:

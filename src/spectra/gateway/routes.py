@@ -18,7 +18,11 @@ from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
 from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.service import TrackService
-from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
+from spectra.tracks.domain.errors import (
+    AnalysisQueueFullError,
+    EmptyUploadError,
+    FileTooLargeError,
+)
 from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackSummary
 
 TRACK_SERVICE_STATE: Final = "track_service"
@@ -113,14 +117,20 @@ def create_router() -> APIRouter:
     async def upload_track(
         request: Request, service: Service, admission: Admission
     ) -> TrackCreated:
-        await admission.admit(client_address(request))
+        client = client_address(request)
+        await admission.admit(client)
         async with request.form(max_files=1, max_fields=0) as form:
             upload = form.get("file")
             data = await read_upload(
                 upload if isinstance(upload, UploadFile) else None,
                 limit=service.max_upload_bytes,
             )
-        return TrackCreated(track_id=(await service.submit(data)).value)
+        try:
+            track_id = await service.submit(data)
+        except AnalysisQueueFullError:
+            await admission.refund(client)
+            raise
+        return TrackCreated(track_id=track_id.value)
 
     @router.get("/tracks/{track_id}")
     async def get_track(track_id: str, service: Service) -> TrackInfo:

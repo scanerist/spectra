@@ -12,3 +12,6 @@ class UploadAdmission:
             raise UploadQuotaExceededError(
                 "too many uploads from this address", retry_after_s=decision.retry_after_s
             )
+
+    async def refund(self, client: str) -> None:
+        await self._quota.refund(client)

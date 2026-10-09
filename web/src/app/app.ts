@@ -4,6 +4,7 @@ import { mountAnalysis } from "../screens/analysis";
 import { mountLoading } from "../screens/loading";
 import { mountMain } from "../screens/main";
 import { mountStart } from "../screens/start";
+import { chromeFor } from "./chrome";
 import { createDissolve } from "./dissolve";
 import { element } from "./dom";
 import { clockText } from "./format";
@@ -61,11 +62,14 @@ export function startApp(root: Document): void {
     for (const name of ROUTES) {
       sections[name].hidden = name !== route;
     }
-    const live = track !== null && (route === "main" || route === "analysis");
-    clock.hidden = !live;
-    play.hidden = !live;
-    back.hidden = route !== "analysis";
-    repo.hidden = route !== "start" || repositoryUrl === "";
+    const chrome = chromeFor(route, {
+      trackLoaded: track !== null,
+      hasRepository: repositoryUrl !== "",
+    });
+    clock.hidden = !chrome.clock;
+    play.hidden = !chrome.play;
+    back.hidden = !chrome.back;
+    repo.hidden = !chrome.repo;
   };
   const dissolve = createDissolve(
     element(root, "#dissolve", HTMLCanvasElement),
@@ -119,7 +123,7 @@ export function startApp(root: Document): void {
       }
       pending = null;
       loading = false;
-      router.go(track === null ? "start" : "main", { replace: true });
+      router.go("start", { replace: true });
       start.showError(messageFor(error));
     }
   }

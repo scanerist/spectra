@@ -66,6 +66,7 @@ Do not create packages for contexts that have no code yet. Add a port only when 
 ```
 web/src/
   contract/   timeline decoder, API client, lookup by playback time: the browser side of docs/CONTRACT.md
+  view/       pure display logic: strongest bands, band history, eased bar spectra
   pixel/      pixel canvas and line primitives (Bresenham, no antialiasing)
   audio/      playback through Web Audio and the AnalyserNode
   screens/    start, loading, main, analysis

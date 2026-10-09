@@ -1,6 +1,6 @@
 from typing import Annotated, Final, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, File, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Response, UploadFile, status
 from fastapi.requests import HTTPConnection
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
@@ -22,7 +22,6 @@ from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId
 
 TRACK_SERVICE_STATE: Final = "track_service"
 UPLOAD_CHUNK_BYTES: Final = 1 << 20
-MULTIPART_OVERHEAD_BYTES: Final = 64 << 10
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 
 
@@ -47,10 +46,7 @@ def track_service(connection: HTTPConnection) -> TrackService:
 type Service = Annotated[TrackService, Depends(track_service)]
 
 
-async def read_upload(request: Request, upload: UploadFile | None, *, limit: int) -> bytes:
-    declared = int(request.headers.get("content-length", "0") or 0)
-    if declared > limit + MULTIPART_OVERHEAD_BYTES:
-        raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     if upload is None:
         raise EmptyUploadError("the request has no file part")
     chunks: list[bytes] = []
@@ -83,11 +79,10 @@ def create_router() -> APIRouter:
 
     @router.post("/tracks", status_code=status.HTTP_202_ACCEPTED)
     async def upload_track(
-        request: Request,
         service: Service,
         file: Annotated[UploadFile | None, File()] = None,
     ) -> TrackCreated:
-        data = await read_upload(request, file, limit=service.max_upload_bytes)
+        data = await read_upload(file, limit=service.max_upload_bytes)
         return TrackCreated(track_id=service.submit(data).value)
 
     @router.get("/tracks/{track_id}")

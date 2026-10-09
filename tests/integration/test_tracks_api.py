@@ -9,6 +9,7 @@ from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.timeline_codec import encode_timeline
+from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.application.registry import TrackRegistry
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
@@ -33,6 +34,7 @@ class Api:
         app.include_router(create_router())
         install_error_handlers(app)
         install_track_service(app, service)
+        install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
         self.client = TestClient(app, raise_server_exceptions=False)
 
 
@@ -84,6 +86,14 @@ def test_upload_over_the_limit_is_file_too_large(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("t.wav", big, "audio/wav")})
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
+
+
+def test_declared_oversized_body_is_refused_before_the_app_reads_it(api: Api) -> None:
+    big = b"x" * (LIMIT_BYTES + MULTIPART_OVERHEAD_BYTES + 1)
+    response = api.client.post("/tracks", files={"file": ("t.wav", big, "audio/wav")})
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert api.jobs.jobs == []
 
 
 def test_unsupported_content_is_unsupported_format() -> None:

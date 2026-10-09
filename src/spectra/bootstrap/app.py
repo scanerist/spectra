@@ -11,6 +11,7 @@ from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.settings import LogLevel, Settings
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
+from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.application.registry import TrackRegistry
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.application.worker import AnalysisWorker
@@ -41,6 +42,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(create_router())
     install_error_handlers(app)
     install_track_service(app, service)
+    install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)
     return app
 
 

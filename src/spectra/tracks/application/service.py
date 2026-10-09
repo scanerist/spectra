@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import Final
 
 from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.track_analysis import AnalysisStage
@@ -14,7 +15,9 @@ from spectra.tracks.domain.errors import (
     TrackNotFoundError,
     TrackTooLongError,
 )
-from spectra.tracks.domain.track import Analysing, Failed, TrackId, TrackStatus
+from spectra.tracks.domain.track import Analysing, Failed, FailureCode, TrackId, TrackStatus
+
+NOT_QUEUED: Final = Failed(code=FailureCode.INTERNAL, message="the analysis could not be queued")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -59,7 +62,12 @@ class TrackService:
             raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
         await self._blobs.put(upload_key(track_id), data)
         await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
-        await self._jobs.enqueue(AnalysisJob(track_id=track_id))
+        try:
+            await self._jobs.enqueue(AnalysisJob(track_id=track_id))
+        except Exception:
+            await self._board.record(track_id, NOT_QUEUED)
+            await self._blobs.delete(upload_key(track_id))
+            raise
         return track_id
 
     def _inspect(self, data: bytes) -> TrackId:

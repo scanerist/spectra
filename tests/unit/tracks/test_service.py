@@ -3,7 +3,7 @@ import pytest
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.adapters.memory import InMemoryBlobStore
-from spectra.tracks.application.service import TrackService, UploadLimits
+from spectra.tracks.application.service import NOT_QUEUED, TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.blobs import upload_key
 from spectra.tracks.domain.errors import (
@@ -22,10 +22,13 @@ MAX_PENDING = 2
 
 
 def service_with(
-    decoder: FakeDecoder | None = None, *, max_upload_bytes: int = 1_000
+    decoder: FakeDecoder | None = None,
+    *,
+    max_upload_bytes: int = 1_000,
+    jobs: FakeJobQueue | None = None,
 ) -> tuple[TrackService, StatusBoard, FakeJobQueue, InMemoryBlobStore]:
     board = memory_board()
-    jobs = FakeJobQueue()
+    jobs = jobs or FakeJobQueue()
     blobs = InMemoryBlobStore()
     service = TrackService(
         decoder=decoder or FakeDecoder(),
@@ -114,3 +117,17 @@ async def test_unsupported_format_is_rejected_before_registering() -> None:
     assert await blobs.get(upload_key(TrackId.of_content(DATA))) is None
     with pytest.raises(TrackNotFoundError):
         await service.status(TrackId.of_content(DATA))
+
+
+@pytest.mark.anyio
+async def test_a_track_whose_job_was_not_queued_fails_and_can_be_retried() -> None:
+    refusing = FakeJobQueue(enqueue_error=ConnectionError("redis went away"))
+    service, _, jobs, blobs = service_with(jobs=refusing)
+    with pytest.raises(ConnectionError):
+        await service.submit(DATA)
+    track_id = TrackId.of_content(DATA)
+    assert await service.status(track_id) == NOT_QUEUED
+    assert await blobs.get(upload_key(track_id)) is None
+    jobs.enqueue_error = None
+    assert await service.submit(DATA) == track_id
+    assert [job.track_id for job in jobs.jobs] == [track_id]

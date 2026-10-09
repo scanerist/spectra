@@ -60,11 +60,14 @@ class FakeDecoder:
 
 
 class FakeJobQueue:
-    def __init__(self) -> None:
+    def __init__(self, *, enqueue_error: Exception | None = None) -> None:
         self.jobs: list[AnalysisJob] = []
         self.finished: list[AnalysisJob] = []
+        self.enqueue_error = enqueue_error
 
     async def enqueue(self, job: AnalysisJob) -> None:
+        if self.enqueue_error is not None:
+            raise self.enqueue_error
         self.jobs.append(job)
 
     async def take(self) -> AnalysisJob | None:

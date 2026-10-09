@@ -221,6 +221,7 @@ services:
 
 networks:
   edge:
+    enable_ipv6: true
   backend:
     internal: true
   monitoring:

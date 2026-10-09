@@ -16,6 +16,7 @@ const SIGNAL_SIZE = 2048;
 export interface Moment {
   readonly timeS: number;
   readonly clockS: number;
+  readonly motionS: number;
   readonly dtS: number;
   readonly running: boolean;
 }
@@ -70,7 +71,7 @@ export function mountMain(root: Document, controls: MainControls): MainScreen {
       });
       strip.replaceChildren(...spans, playhead);
     },
-    draw({ timeS, clockS }) {
+    draw({ timeS, motionS }) {
       if (track === null) {
         return;
       }
@@ -79,7 +80,7 @@ export function mountMain(root: Document, controls: MainControls): MainScreen {
       const bands = bandsOf(timeline, frame);
       drawRidge(ridge, bandHistory(timeline, frame, RIDGE_ROWS, HISTORY_STEP_FRAMES));
       drawSignal(signal, controls.waveform(samples) ? samples : null);
-      drawDecomposition(decomposition, bands, clockS);
+      drawDecomposition(decomposition, bands, motionS);
       drawSpectrum(spectrum, bands);
       const current = sectionAt(timeS, info.sections);
       info.sections.forEach((section, index) => {

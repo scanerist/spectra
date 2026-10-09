@@ -1,5 +1,6 @@
 import { Player } from "../audio/player";
 import { createApi } from "../contract/api";
+import { mountAnalysis } from "../screens/analysis";
 import { mountLoading } from "../screens/loading";
 import { mountMain } from "../screens/main";
 import { mountStart } from "../screens/start";
@@ -52,6 +53,8 @@ export function startApp(root: Document): void {
     },
   });
 
+  const analysis = mountAnalysis(root, () => player?.sampleRateHz ?? 44_100, Math.random);
+
   const show = (route: Route) => {
     current = route;
     for (const name of ROUTES) {
@@ -88,6 +91,7 @@ export function startApp(root: Document): void {
       audio.play(loaded.audio);
       track = loaded;
       main.enter(loaded);
+      analysis.enter(loaded);
       loading = false;
       router.go("main", { replace: true });
     } catch (error) {
@@ -102,12 +106,14 @@ export function startApp(root: Document): void {
   home.addEventListener("click", () => ensurePlayer());
 
   let lastClockS: number | null = null;
+  let motionS = 0;
   const frame = (nowMs: number) => {
     const clockS = nowMs / 1000;
     const dtS = Math.min(MAX_FRAME_DT_S, clockS - (lastClockS ?? clockS));
     lastClockS = clockS;
     const running = player?.running ?? false;
-    const moment = { timeS: timeS(), clockS, dtS, running };
+    motionS += running ? dtS : 0;
+    const moment = { timeS: timeS(), clockS, motionS, dtS, running };
     if (current === "start") {
       start.draw(clockS);
     }
@@ -119,6 +125,9 @@ export function startApp(root: Document): void {
     }
     if (current === "main") {
       main.draw(moment);
+    }
+    if (current === "analysis") {
+      analysis.draw(moment);
     }
     requestAnimationFrame(frame);
   };

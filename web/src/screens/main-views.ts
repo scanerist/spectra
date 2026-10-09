@@ -68,7 +68,7 @@ export function drawSignal(view: PixelView, samples: Float32Array | null): void 
   target.globalAlpha = 1;
 }
 
-export function drawDecomposition(view: PixelView, bands: Uint8Array, clockS: number): void {
+export function drawDecomposition(view: PixelView, bands: Uint8Array, motionS: number): void {
   const { target, width, height } = view;
   clear(view);
   const strongest = strongestBands(bands);
@@ -92,7 +92,7 @@ export function drawDecomposition(view: PixelView, bands: Uint8Array, clockS: nu
             amp *
               rowHeight *
               0.42 *
-              Math.sin((TURN_RAD * cycles * x) / width + clockS * (0.8 + row * 0.5) * TURN_RAD),
+              Math.sin((TURN_RAD * cycles * x) / width + motionS * (0.8 + row * 0.5) * TURN_RAD),
         ],
       ),
     );

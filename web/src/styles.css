@@ -522,6 +522,12 @@ header .r {
   }
 }
 
+@media (max-width: 480px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scan {
     display: none;

@@ -13,6 +13,7 @@ from spectra.tracks.adapters.memory import (
     InMemoryTrackStore,
     InMemoryUploadQuota,
 )
+from spectra.tracks.adapters.redis_quota import RedisUploadQuota
 from spectra.tracks.application.ports import BlobStore, JobQueue, UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
@@ -54,7 +55,7 @@ def hosted_parts(adapters: HostedAdapters, settings: Settings) -> TrackParts:
         board=StatusBoard(store=adapters.store, feed=adapters.feed),
         blobs=adapters.blobs,
         jobs=adapters.jobs,
-        quota=memory_quota(settings),
+        quota=RedisUploadQuota(client=adapters.redis, policy=upload_quota_policy(settings)),
     )
 
 

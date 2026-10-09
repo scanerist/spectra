@@ -14,6 +14,11 @@ class LogLevel(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class LogFormat(StrEnum):
+    TEXT = "text"
+    JSON = "json"
+
+
 class Mode(StrEnum):
     LOCAL = "local"
     HOSTED = "hosted"
@@ -25,6 +30,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65_535)
     log_level: LogLevel = LogLevel.INFO
+    log_format: LogFormat = LogFormat.TEXT
     mode: Mode = Mode.LOCAL
     max_upload_bytes: int = Field(default=256 * 1024 * 1024, ge=1)
     max_tracks: int = Field(default=8, ge=1)

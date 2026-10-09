@@ -1,14 +1,13 @@
 import asyncio
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Final
 
 import uvicorn
 from fastapi import FastAPI
 
 from spectra.bootstrap.hosted import consumer_name, open_hosted
-from spectra.bootstrap.settings import HostedSettings, LogLevel, Mode, Settings
+from spectra.bootstrap.logs import configure_logging, logging_config
+from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
     analysis_worker,
     hosted_parts,
@@ -25,11 +24,9 @@ from spectra.gateway.routes import (
 from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.application.admission import UploadAdmission
 
-LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-
 
 def create_app(settings: Settings, hosted: HostedSettings | None = None) -> FastAPI:
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -66,10 +63,6 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
     return app
 
 
-def configure_logging(level: LogLevel) -> None:
-    logging.basicConfig(level=level.value, format=LOG_FORMAT)
-
-
 def hosted_settings(settings: Settings) -> HostedSettings | None:
     match settings.mode:
         case Mode.LOCAL:
@@ -85,6 +78,7 @@ def run() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        log_config=logging_config(settings.log_level, settings.log_format),
         proxy_headers=True,
         forwarded_allow_ips=settings.forwarded_allow_ips,
     )

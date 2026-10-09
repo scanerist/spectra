@@ -6,8 +6,10 @@ from pydantic import ValidationError
 
 from spectra.bootstrap import app as bootstrap_app
 from spectra.bootstrap.hosted import postgres_url
+from spectra.bootstrap.logs import logging_config
 from spectra.bootstrap.settings import (
     HostedSettings,
+    LogFormat,
     LogLevel,
     Mode,
     PostgresSettings,
@@ -169,3 +171,4 @@ def test_run_serves_the_app_with_configured_host_and_port(
     assert isinstance(served["app"], FastAPI)
     assert (served["host"], served["port"], served["log_level"]) == ("127.0.0.1", 9002, "info")
     assert (served["proxy_headers"], served["forwarded_allow_ips"]) == (True, "127.0.0.1")
+    assert served["log_config"] == logging_config(LogLevel.INFO, LogFormat.TEXT)

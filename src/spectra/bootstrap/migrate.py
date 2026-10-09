@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from spectra.bootstrap.app import configure_logging
 from spectra.bootstrap.hosted import consumer_name, open_hosted, prepare_storage
+from spectra.bootstrap.logs import configure_logging
 from spectra.bootstrap.settings import HostedSettings, Settings
 
 logger = logging.getLogger(__name__)
@@ -15,5 +15,6 @@ async def migrate(settings: HostedSettings) -> None:
 
 
 def main() -> None:
-    configure_logging(Settings().log_level)
+    settings = Settings()
+    configure_logging(settings.log_level, settings.log_format)
     asyncio.run(migrate(HostedSettings.from_environment()))

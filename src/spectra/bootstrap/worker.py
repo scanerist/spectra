@@ -4,8 +4,8 @@ import logging
 import signal
 from typing import Final
 
-from spectra.bootstrap.app import configure_logging
 from spectra.bootstrap.hosted import consumer_name, open_hosted
+from spectra.bootstrap.logs import configure_logging
 from spectra.bootstrap.settings import HostedSettings, Settings
 from spectra.bootstrap.tracks import analysis_worker, hosted_parts
 from spectra.tracks.application.janitor import Janitor
@@ -51,5 +51,5 @@ async def serve_until_signalled(settings: Settings, hosted: HostedSettings) -> N
 
 def main() -> None:
     settings = Settings()
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
     asyncio.run(serve_until_signalled(settings, HostedSettings.from_environment()))

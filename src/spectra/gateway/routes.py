@@ -1,3 +1,4 @@
+import ipaddress
 from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
@@ -30,6 +31,7 @@ UPLOAD_ADMISSION_STATE: Final = "upload_admission"
 UPLOAD_CHUNK_BYTES: Final = 1 << 20
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
+IPV6_CLIENT_PREFIX: Final = 64
 
 
 class HealthReport(BaseModel):
@@ -73,7 +75,18 @@ type Probes = Annotated[Readiness, Depends(readiness)]
 
 
 def client_address(request: Request) -> str:
-    return request.client.host if request.client is not None else UNKNOWN_CLIENT
+    if request.client is None:
+        return UNKNOWN_CLIENT
+    try:
+        address = ipaddress.ip_address(request.client.host)
+    except ValueError:
+        return request.client.host
+    match address:
+        case ipaddress.IPv6Address(ipv4_mapped=ipaddress.IPv4Address() as ipv4):
+            return str(ipv4)
+        case ipaddress.IPv6Address():
+            return str(ipaddress.ip_network(f"{address}/{IPV6_CLIENT_PREFIX}", strict=False))
+    return str(address)
 
 
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:

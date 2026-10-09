@@ -133,7 +133,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=web
       - run: cp .env.example .env
       - run: docker compose --file compose.yaml config --quiet
-      - run: docker compose up --detach --wait
+      - run: docker compose up --detach --wait 2>&1 | tee "$RUNNER_TEMP/up.log"
+        shell: bash
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
       - run: test "$(docker compose ps --quiet --status running worker)" != ""
@@ -164,6 +165,10 @@ jobs:
         run: |
           docker compose ps --all
           docker compose logs
+          if [ -s "$RUNNER_TEMP/up.log" ]; then
+            reason=$(grep -v -e 'Pull' -e 'Extracting' -e 'Downloading' -e 'Waiting' "$RUNNER_TEMP/up.log" | tail -n 15 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')
+            echo "::error title=docker compose up failed::$reason"
+          fi
           docker compose ps --all --format '{{.Service}} {{.State}} {{.Health}}' |
             awk '$2 != "running" || ($3 != "" && $3 != "healthy") { print $1 }' |
             while read -r service; do

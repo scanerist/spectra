@@ -8,7 +8,6 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.143.0",
-    "msgpack>=1.2.3",
     "numpy>=2.5.3",
     "pydantic>=2.14.0",
     "pydantic-settings>=2.15.0",
@@ -61,10 +60,6 @@ mypy_path = ["src", "."]
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
-[[tool.mypy.overrides]]
-module = ["msgpack"]
-ignore_missing_imports = true
-
 [tool.pytest]
 minversion = "9.0"
 strict = true
@@ -91,7 +86,7 @@ layers = ["adapters", "application", "domain"]
 name = "Analysis domain stays pure"
 type = "forbidden"
 source_modules = ["spectra.analysis.domain"]
-forbidden_modules = ["fastapi", "starlette", "uvicorn", "pydantic", "pydantic_settings", "msgpack"]
+forbidden_modules = ["fastapi", "starlette", "uvicorn", "pydantic", "pydantic_settings"]
 
 [[tool.importlinter.contracts]]
 name = "Gateway does not know concrete adapters"

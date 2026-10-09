@@ -13,6 +13,7 @@ from spectra.gateway.errors import (
 )
 from spectra.gateway.events import EVENT_STREAM_HEADERS, EVENT_STREAM_MEDIA_TYPE, status_events
 from spectra.gateway.protocol import PROTOCOL_VERSION
+from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
@@ -30,6 +31,12 @@ class HealthReport(BaseModel):
     protocol: int = PROTOCOL_VERSION
 
 
+class ReadinessReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    ok: Literal[True] = True
+
+
 def install_track_service(app: FastAPI, service: TrackService) -> None:
     setattr(app.state, TRACK_SERVICE_STATE, service)
 
@@ -42,6 +49,7 @@ def track_service(connection: HTTPConnection) -> TrackService:
 
 
 type Service = Annotated[TrackService, Depends(track_service)]
+type Probes = Annotated[Readiness, Depends(readiness)]
 
 
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
@@ -74,6 +82,12 @@ def create_router() -> APIRouter:
     @router.get("/health")
     async def health() -> HealthReport:
         return HealthReport()
+
+    @router.get("/ready")
+    async def ready(probes: Probes) -> ReadinessReport:
+        if silent := await probes.silent():
+            raise ApiError(ErrorCode.UNAVAILABLE, f"not responding: {', '.join(silent)}")
+        return ReadinessReport()
 
     @router.post("/tracks", status_code=status.HTTP_202_ACCEPTED)
     async def upload_track(

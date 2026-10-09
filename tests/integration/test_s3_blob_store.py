@@ -48,7 +48,10 @@ def store(bucket: str) -> Iterator[S3BlobStore]:
     with s3_endpoint() as endpoint:
         client = s3_client(endpoint)
         yield S3BlobStore(client=client, bucket=bucket)
-        listing = client.list_objects_v2(Bucket=bucket)
+        try:
+            listing = client.list_objects_v2(Bucket=bucket)
+        except client.exceptions.NoSuchBucket:
+            return
         for item in listing.get("Contents", []):
             client.delete_object(Bucket=bucket, Key=item["Key"])
         client.delete_bucket(Bucket=bucket)
@@ -96,6 +99,17 @@ async def test_ensuring_the_bucket_twice_keeps_its_blobs(store: S3BlobStore) -> 
     await store.put("timelines/a", b"timeline")
     await store.ensure_bucket()
     assert await store.get("timelines/a") == b"timeline"
+
+
+@pytest.mark.anyio
+async def test_an_existing_bucket_answers(store: S3BlobStore) -> None:
+    await store.ensure_bucket()
+    assert await store.ping()
+
+
+@pytest.mark.anyio
+async def test_a_missing_bucket_does_not_answer(store: S3BlobStore) -> None:
+    assert not await store.ping()
 
 
 def test_the_secret_key_stays_out_of_the_repr() -> None:

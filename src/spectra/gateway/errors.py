@@ -34,6 +34,7 @@ class ErrorCode(StrEnum):
     TRACK_NOT_FOUND = "track_not_found"
     NOT_READY = "not_ready"
     BUSY = "busy"
+    UNAVAILABLE = "unavailable"
     INTERNAL = "internal"
 
 
@@ -46,6 +47,7 @@ STATUSES: Final[Mapping[ErrorCode, HTTPStatus]] = {
     ErrorCode.TRACK_NOT_FOUND: HTTPStatus.NOT_FOUND,
     ErrorCode.NOT_READY: HTTPStatus.CONFLICT,
     ErrorCode.BUSY: HTTPStatus.SERVICE_UNAVAILABLE,
+    ErrorCode.UNAVAILABLE: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,
 }
 FAILURE_CODES: Final[Mapping[FailureCode, ErrorCode]] = {

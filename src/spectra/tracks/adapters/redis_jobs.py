@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from redis.asyncio import Redis
-from redis.exceptions import ResponseError
+from redis.exceptions import RedisError, ResponseError
 
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.domain.errors import TracksError
@@ -50,6 +50,12 @@ class RedisJobQueue:
         except ResponseError as error:
             if not str(error).startswith("BUSYGROUP"):
                 raise
+
+    async def ping(self) -> bool:
+        try:
+            return bool(await self._client.ping())
+        except RedisError, OSError:
+            return False
 
     async def enqueue(self, job: AnalysisJob) -> None:
         await self._client.xadd(self._stream.key, {"track_id": job.track_id.value})

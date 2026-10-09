@@ -55,6 +55,11 @@ async def take(queue: RedisJobQueue) -> AnalysisJob | None:
         return await queue.take()
 
 
+async def test_a_running_redis_answers(client: Redis, stream_key: str) -> None:
+    queue = await worker_queue(client, stream_key, "a")
+    assert await queue.ping()
+
+
 async def test_an_enqueued_job_is_taken(client: Redis, stream_key: str) -> None:
     queue = await worker_queue(client, stream_key, "a")
     await queue.enqueue(job("a"))

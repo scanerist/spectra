@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy import delete as delete_rows
 from sqlalchemy import update as update_rows
 from sqlalchemy.dialects.postgresql import JSONB, insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from spectra.tracks.adapters.status_records import (
@@ -45,6 +46,14 @@ TRACKS: Final = Table(
 class PostgresTrackStore:
     def __init__(self, *, engine: AsyncEngine) -> None:
         self._engine = engine
+
+    async def ping(self) -> bool:
+        try:
+            async with self._engine.connect() as connection:
+                await connection.execute(select(1))
+        except SQLAlchemyError, OSError:
+            return False
+        return True
 
     async def find(self, track_id: TrackId) -> TrackStatus | None:
         statement = (

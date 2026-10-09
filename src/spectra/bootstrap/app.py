@@ -16,6 +16,7 @@ from spectra.bootstrap.tracks import (
     track_service,
 )
 from spectra.gateway.errors import install_error_handlers
+from spectra.gateway.readiness import Readiness, install_readiness
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.upload_limit import install_upload_limit
 
@@ -38,6 +39,16 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
         else:
             async with open_hosted(hosted, consumer=consumer_name()) as adapters:
                 install_track_service(app, track_service(hosted_parts(adapters), settings))
+                install_readiness(
+                    app,
+                    Readiness(
+                        probes={
+                            "postgres": adapters.store.ping,
+                            "redis": adapters.jobs.ping,
+                            "s3": adapters.blobs.ping,
+                        }
+                    ),
+                )
                 yield
 
     app = FastAPI(title="spectra engine", lifespan=lifespan)

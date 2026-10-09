@@ -6,8 +6,8 @@ from typing import Final
 from spectra.bootstrap.settings import Settings
 
 PROBE_HOST: Final = "127.0.0.1"
-PROBE_PATH: Final = "/health"
-PROBE_TIMEOUT_S: Final = 2.0
+PROBE_PATH: Final = "/ready"
+PROBE_TIMEOUT_S: Final = 4.0
 
 
 def is_healthy(*, port: int) -> bool:

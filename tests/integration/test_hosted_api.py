@@ -46,6 +46,12 @@ async def test_an_upload_is_stored_and_queued_for_a_worker(hosted: HostedSetting
         assert await adapters.blobs.get(upload_key(TrackId(track_id))) == kicks()
 
 
+async def test_a_hosted_engine_is_ready_when_its_stores_answer(hosted: HostedSettings) -> None:
+    with TestClient(create_app(Settings(), hosted)) as client:
+        response = client.get("/ready")
+    assert (response.status_code, response.json()) == (200, {"ok": True})
+
+
 async def test_an_unknown_track_is_not_found(hosted: HostedSettings) -> None:
     with TestClient(create_app(Settings(), hosted)) as client:
         response = client.get("/tracks/0123456789abcdef")

@@ -11,7 +11,7 @@ from spectra.bootstrap import healthcheck
 def serving(status: HTTPStatus) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
-            self.send_response(status if self.path == "/health" else HTTPStatus.NOT_FOUND)
+            self.send_response(status if self.path == "/ready" else HTTPStatus.NOT_FOUND)
             self.end_headers()
 
     return Handler

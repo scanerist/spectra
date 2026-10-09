@@ -61,6 +61,10 @@ def downgrade_to_base(connection: Connection) -> None:
     command.downgrade(alembic_config(connection), "base")
 
 
+async def test_a_running_postgres_answers(store: PostgresTrackStore) -> None:
+    assert await store.ping()
+
+
 async def test_an_unknown_track_is_not_found(store: PostgresTrackStore) -> None:
     assert await store.find(track("a")) is None
 

@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING, Final
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 if TYPE_CHECKING:
     from types_boto3_s3 import S3Client
 
 MISSING_BUCKET_CODES: Final = frozenset({"404", "NoSuchBucket"})
+CONNECT_TIMEOUT_S: Final = 5.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -30,6 +31,7 @@ def s3_client(endpoint: S3Endpoint) -> S3Client:
         config=Config(
             s3={"addressing_style": "path"},
             retries={"mode": "standard", "max_attempts": 3},
+            connect_timeout=CONNECT_TIMEOUT_S,
         ),
     )
 
@@ -41,6 +43,13 @@ class S3BlobStore:
 
     async def ensure_bucket(self) -> None:
         await asyncio.to_thread(self._ensure_bucket)
+
+    async def ping(self) -> bool:
+        try:
+            await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)
+        except BotoCoreError, ClientError:
+            return False
+        return True
 
     async def put(self, key: str, data: bytes) -> None:
         await asyncio.to_thread(self._client.put_object, Bucket=self._bucket, Key=key, Body=data)

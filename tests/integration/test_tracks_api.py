@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterator
 from typing import Final
 
 import pytest
@@ -125,6 +126,18 @@ def test_empty_upload_is_no_file(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("t.wav", b"", "audio/wav")})
     assert response.status_code == 400
     assert response.json()["error"] == "no_file"
+
+
+def test_a_chunked_upload_over_the_limit_is_file_too_large(api: Api) -> None:
+    def chunks() -> Iterator[bytes]:
+        yield b'--b\r\nContent-Disposition: form-data; name="file"; filename="t.wav"\r\n\r\n'
+        for _ in range(200):
+            yield b"x" * 1_000
+
+    headers = {"content-type": "multipart/form-data; boundary=b"}
+    response = api.client.post("/tracks", content=chunks(), headers=headers)
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
 
 
 def test_upload_over_the_limit_is_file_too_large(api: Api) -> None:

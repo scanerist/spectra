@@ -10,6 +10,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
+from starlette.requests import ClientDisconnect
 
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.gateway.schemas import ErrorBody
@@ -105,6 +106,10 @@ async def handle_unreadable_request(_request: Request, _error: Exception) -> JSO
     return error_response(ErrorCode.NO_FILE, "the request has no readable file part")
 
 
+async def handle_client_disconnect(_request: Request, _error: Exception) -> JSONResponse:
+    return error_response(ErrorCode.NO_FILE, "the client stopped sending the upload")
+
+
 async def handle_http_error(request: Request, error: Exception) -> Response:
     if isinstance(error, HTTPException) and error.status_code == HTTPStatus.BAD_REQUEST:
         return error_response(ErrorCode.NO_FILE, str(error.detail))
@@ -133,6 +138,7 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, handle_unreadable_request)
     app.add_exception_handler(HTTPException, handle_http_error)
     app.add_exception_handler(UploadQuotaExceededError, handle_quota_error)
+    app.add_exception_handler(ClientDisconnect, handle_client_disconnect)
     for error_type, code in DOMAIN_ERRORS.items():
         app.add_exception_handler(error_type, domain_handler(code))
     app.add_exception_handler(Exception, handle_unexpected_error)

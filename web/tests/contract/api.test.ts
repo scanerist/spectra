@@ -140,10 +140,16 @@ describe("uploading", () => {
     await expect(api.upload(new Blob(["x"]), "x.wav", abandoned.signal)).rejects.toBe(reason);
   });
 
-  it("reports a proxy page instead of an error body by its status", async () => {
-    const gateway = () => new Response("<html>bad gateway</html>", { status: 503 });
+  it.each([502, 503, 504])("reports a %i proxy page as unavailable", async (status) => {
+    const gateway = () => new Response("<html>bad gateway</html>", { status });
     const api = createApi(answering(gateway).fetchFn, () => new FakeStream());
     expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("unavailable");
+  });
+
+  it("reports any other page without an error body as internal", async () => {
+    const odd = () => new Response("<html>teapot</html>", { status: 418 });
+    const api = createApi(answering(odd).fetchFn, () => new FakeStream());
+    expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("internal");
   });
 });
 

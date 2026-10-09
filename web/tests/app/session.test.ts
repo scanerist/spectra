@@ -175,6 +175,7 @@ describe("messages", () => {
     expect(messageFor(new ApiError("unsupported_format", ""))).toContain("mp3, wav, flac или ogg");
     expect(messageFor(new ApiError("busy", ""))).toContain("через минуту");
     expect(messageFor(new ApiError("internal", ""))).toBe("что-то сломалось. попробуй ещё раз.");
+    expect(messageFor(new ApiError("track_not_found", ""))).toContain("закинь его ещё раз");
   });
 
   it("never show the engine's own message", () => {

@@ -65,6 +65,7 @@ export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type OpenEventStream = (url: string) => EventStream;
 
 const CLOSED = 2;
+const GATEWAY_STATUSES: readonly number[] = [502, 503, 504];
 
 export interface Api {
   protocol(signal?: AbortSignal): Promise<number>;
@@ -182,7 +183,7 @@ async function errorOf(response: Response): Promise<ApiError> {
     return new ApiError(error.code, error.message, retryAfterS);
   } catch {
     return new ApiError(
-      response.status === 503 ? "unavailable" : "internal",
+      GATEWAY_STATUSES.includes(response.status) ? "unavailable" : "internal",
       `HTTP ${response.status}`,
       retryAfterS,
     );

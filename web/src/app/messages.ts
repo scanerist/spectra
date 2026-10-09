@@ -43,6 +43,8 @@ export function messageFor(error: unknown): string {
       return `слишком много загрузок. попробуй через ${minutes(error.retryAfterS)} мин.`;
     case "busy":
       return "сейчас разбирается много треков. попробуй через минуту.";
+    case "track_not_found":
+      return "трек больше не хранится. закинь его ещё раз.";
     case "unavailable":
       return "сервер не отвечает. попробуй позже.";
     default:

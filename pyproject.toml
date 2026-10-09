@@ -7,6 +7,8 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
     "boto3>=1.43.110",
     "fastapi>=0.143.0",
     "numpy>=2.5.3",
@@ -15,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "soundfile>=0.14.0",
     "soxr>=1.1.0",
+    "sqlalchemy[asyncio]>=2.1.4",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -141,4 +144,4 @@ source_modules = [
     "spectra.tracks.application",
     "spectra.tracks.domain",
 ]
-forbidden_modules = ["boto3", "botocore"]
+forbidden_modules = ["alembic", "asyncpg", "boto3", "botocore", "sqlalchemy"]

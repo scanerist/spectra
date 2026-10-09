@@ -6,16 +6,16 @@ spectra is an open-source music visualizer. You drop in a track; a Python engine
 
 - No LLM anywhere in the product. Every feature is deterministic signal processing.
 - The protocol in `docs/CONTRACT.md` never changes silently. Contract tests in `tests/contract/` pin it. A change to the protocol is a separate, explicit commit that updates the contract doc, the golden tests and lists what the web client must change.
-- The browser client in `web/` holds no analysis logic. It plays the audio, looks up precomputed features by playback time and renders them. Reading the raw signal from an `AnalyserNode` to draw a waveform is allowed; deriving bands, tempo, peaks or sections in the browser is not.
+- The browser client in `web/` holds no analysis logic. It plays the audio, looks up precomputed features by playback time and renders them. Reading the raw signal from an `AnalyserNode` to draw a waveform is allowed; deriving bands, tempo, peaks or sections in the browser is not. Ranking or picking among precomputed values for display is allowed, for example the six strongest local maxima of a frame's 64 bands for the decomposition panel, as is smoothing them over time for drawing.
 - Every pixel the user sees follows `docs/DESIGN.md`.
 
 ## Stack
 
 - Python 3.14, managed with `uv`, packaged with `uv_build`, `src/` layout.
-- FastAPI + uvicorn for the gateway, msgpack or packed numpy arrays for binary payloads, JSON for metadata.
+- FastAPI + uvicorn for the gateway, a packed little-endian binary timeline, JSON for metadata, SSE for progress.
 - numpy for all DSP. pydantic v2 only at system boundaries: API messages and settings.
 - Quality gates: ruff (lint + format), mypy `--strict`, pytest 9 in strict mode, hypothesis, import-linter.
-- `web/`: Vite + TypeScript, no UI framework, Canvas 2D, Web Audio.
+- `web/`: Vite + TypeScript (strict), no UI framework, Canvas 2D, Web Audio; Biome for lint and format, Vitest for tests. Served from the same origin as the API: Caddy in production, the Vite dev proxy in development. No CORS in the engine.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ Bounded contexts:
 Shared and outer packages:
 
 - `spectra.shared` — shared kernel only: `Clock` port and its adapters, tiny cross-context value objects. Keep it small.
-- `spectra.gateway` — the HTTP boundary: timeline codec, API schemas, FastAPI routes. Maps domain objects to the contract and back.
+- `spectra.gateway` — the HTTP boundary and the backend for the web client (BFF): the API exists for the screens in `web/` and is shaped for them. Timeline codec, API schemas, FastAPI routes. Maps domain objects to the contract and back. When a screen needs data in another shape, change the contract and the gateway, not the domain.
 - `spectra.bootstrap` — composition root: settings, wiring, `create_app()`. The only place that knows concrete adapters.
 
 Do not create packages for contexts that have no code yet. Add a port only when there is a real second implementation or a test needs a fake.
@@ -60,6 +60,22 @@ Do not create packages for contexts that have no code yet. Add a port only when 
 - Logging: `logger = logging.getLogger(__name__)`, lazy `%s` formatting, configured only in `bootstrap`. No `print`.
 - Absolute imports only. `__init__.py` files are empty unless they declare a deliberate public API with `__all__`.
 - Constants are `Final`, UPPER_SNAKE_CASE, defined in the module that owns the concept.
+
+## Web client
+
+```
+web/src/
+  contract/   timeline decoder, API client, lookup by playback time: the browser side of docs/CONTRACT.md
+  pixel/      pixel canvas and line primitives (Bresenham, no antialiasing)
+  audio/      playback through Web Audio and the AnalyserNode
+  screens/    start, loading, main, analysis
+  app/        router, pixel dissolve, wiring
+```
+
+- The same code style applies: no comments, units in names (`time_s`, `freq_hz`), small functions, no module-level mutable state.
+- TypeScript strict with `noUncheckedIndexedAccess`; no `any`, no non-null assertions outside DOM lookups at startup.
+- Pure logic lives outside the screens and is tested with Vitest; screens only wire DOM, canvas and state.
+- The timeline decoder is tested against the same golden file as the engine: `tests/contract/golden/timeline_v1.bin`.
 
 ## Testing — TDD
 
@@ -83,9 +99,14 @@ uv run ruff check --fix && uv run ruff format
 uv run mypy
 uv run lint-imports
 uv run spectra
+
+cd web
+npm ci
+npm run check
+npm run dev
 ```
 
-All five checks must pass before a commit.
+All five Python checks must pass before a commit; when `web/` changes, `npm run check` (Biome, TypeScript, Vitest, build) must pass too.
 
 ## Commits
 

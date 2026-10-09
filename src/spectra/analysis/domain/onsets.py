@@ -15,9 +15,13 @@ WINDOW_LEAD_FRAMES: Final = 1
 
 
 def onset_envelope(
-    band_power: Float32Array, *, max_freq_hz: float = ONSET_MAX_FREQ_HZ
+    band_power: Float32Array,
+    *,
+    min_freq_hz: float = 0.0,
+    max_freq_hz: float = ONSET_MAX_FREQ_HZ,
 ) -> Float32Array:
-    selected = band_power[:, band_centers_hz() <= max_freq_hz]
+    centres_hz = band_centers_hz()
+    selected = band_power[:, (centres_hz >= min_freq_hz) & (centres_hz <= max_freq_hz)]
     scaled = normalise_db(
         power_to_db(selected, floor_db=ONSET_FLOOR_DB),
         range_db=ONSET_RANGE_DB,

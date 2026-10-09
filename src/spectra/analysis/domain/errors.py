@@ -40,3 +40,11 @@ class InvalidBeatGridError(AnalysisError):
 
 class InvalidSectionError(AnalysisError):
     pass
+
+
+class UnanalysableSignalError(AnalysisError):
+    pass
+
+
+class InvalidTrackAnalysisError(AnalysisError):
+    pass

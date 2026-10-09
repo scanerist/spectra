@@ -4,11 +4,10 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
-from prometheus_client import CollectorRegistry
 
 from spectra.bootstrap.hosted import consumer_name, open_hosted
 from spectra.bootstrap.logs import configure_logging, logging_config
-from spectra.bootstrap.metrics import serving_metrics
+from spectra.bootstrap.metrics import process_registry, serving_metrics
 from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
     analysis_worker,
@@ -32,7 +31,7 @@ from spectra.tracks.application.admission import UploadAdmission
 
 def create_app(settings: Settings, hosted: HostedSettings | None = None) -> FastAPI:
     configure_logging(settings.log_level, settings.log_format)
-    registry = CollectorRegistry()
+    registry = process_registry()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

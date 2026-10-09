@@ -10,7 +10,7 @@ from prometheus_client import CollectorRegistry, Counter, Gauge
 
 from spectra.bootstrap.hosted import HostedAdapters, consumer_name, open_hosted
 from spectra.bootstrap.logs import configure_logging
-from spectra.bootstrap.metrics import serving_metrics
+from spectra.bootstrap.metrics import process_registry, serving_metrics
 from spectra.bootstrap.settings import HostedSettings, Settings
 from spectra.bootstrap.tracks import analysis_worker, hosted_parts
 from spectra.tracks.application.janitor import Janitor
@@ -43,7 +43,7 @@ class WorkerMetrics:
 
 
 async def serve(settings: Settings, hosted: HostedSettings, *, stop: asyncio.Event) -> None:
-    registry = CollectorRegistry()
+    registry = process_registry()
     metrics = WorkerMetrics.on(registry)
     with serving_metrics(registry, port=settings.metrics_port):
         async with open_hosted(hosted, consumer=consumer_name()) as adapters:

@@ -2,7 +2,7 @@ import urllib.request
 
 from prometheus_client import CollectorRegistry, Counter
 
-from spectra.bootstrap.metrics import serving_metrics
+from spectra.bootstrap.metrics import process_registry, serving_metrics
 
 
 def test_metrics_are_served_on_the_configured_port() -> None:
@@ -18,3 +18,9 @@ def test_metrics_are_served_on_the_configured_port() -> None:
 def test_no_port_serves_nothing() -> None:
     with serving_metrics(CollectorRegistry(), port=None) as port:
         assert port is None
+
+
+def test_a_process_registry_reports_memory_and_garbage_collection() -> None:
+    registry = process_registry()
+    names = {metric.name for metric in registry.collect()}
+    assert {"python_gc_objects_collected", "python_info"} <= names

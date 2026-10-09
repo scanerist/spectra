@@ -1,7 +1,21 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from prometheus_client import CollectorRegistry, start_http_server
+from prometheus_client import (
+    CollectorRegistry,
+    GCCollector,
+    PlatformCollector,
+    ProcessCollector,
+    start_http_server,
+)
+
+
+def process_registry() -> CollectorRegistry:
+    registry = CollectorRegistry()
+    ProcessCollector(registry=registry)
+    PlatformCollector(registry=registry)
+    GCCollector(registry=registry)
+    return registry
 
 
 @contextmanager

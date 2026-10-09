@@ -11,7 +11,7 @@ from spectra.analysis.domain.peaks import PEAK_COUNT, PEAK_FIELD_COUNT, Peak, Pe
 
 
 def peak(amplitude: float, freq_hz: float = 440.0) -> Peak:
-    return Peak(freq_hz=freq_hz, amplitude=amplitude, phase_rad=0.0)
+    return Peak(freq_hz=freq_hz, amplitude=amplitude)
 
 
 @pytest.mark.parametrize(
@@ -19,19 +19,13 @@ def peak(amplitude: float, freq_hz: float = 440.0) -> Peak:
 )
 def test_peak_rejects_nonpositive_or_nonfinite_freq(freq_hz: float) -> None:
     with pytest.raises(OutOfRangeError):
-        Peak(freq_hz=freq_hz, amplitude=0.5, phase_rad=0.0)
+        Peak(freq_hz=freq_hz, amplitude=0.5)
 
 
 @pytest.mark.parametrize("amplitude", [-0.1, 1.1, math.nan], ids=["negative", "above-one", "nan"])
 def test_peak_rejects_amplitude_outside_unit(amplitude: float) -> None:
     with pytest.raises(OutOfRangeError):
-        Peak(freq_hz=440.0, amplitude=amplitude, phase_rad=0.0)
-
-
-@pytest.mark.parametrize("phase_rad", [math.nan, math.inf], ids=["nan", "inf"])
-def test_peak_rejects_nonfinite_phase(phase_rad: float) -> None:
-    with pytest.raises(OutOfRangeError):
-        Peak(freq_hz=440.0, amplitude=0.5, phase_rad=phase_rad)
+        Peak(freq_hz=440.0, amplitude=amplitude)
 
 
 def test_peaks_may_be_empty() -> None:
@@ -60,40 +54,40 @@ def test_ranked_keeps_only_the_strongest_peak_count() -> None:
 
 
 def test_padded_array_is_zero_filled_float32_rows() -> None:
-    peaks = Peaks(items=(Peak(freq_hz=55.0, amplitude=0.75, phase_rad=0.5),))
+    peaks = Peaks(items=(Peak(freq_hz=55.0, amplitude=0.75),))
     padded = peaks.as_padded_array()
     assert padded.dtype == np.float32
-    assert padded.shape == (PEAK_COUNT, PEAK_FIELD_COUNT)
-    np.testing.assert_array_equal(padded[0], [55.0, 0.75, 0.5])
+    assert padded.shape == (PEAK_COUNT, PEAK_FIELD_COUNT) == (8, 2)
+    np.testing.assert_array_equal(padded[0], [55.0, 0.75])
     np.testing.assert_array_equal(padded[1:], 0.0)
 
 
 def test_from_padded_array_drops_padding_rows() -> None:
     padded = np.zeros((PEAK_COUNT, PEAK_FIELD_COUNT), dtype=np.float32)
-    padded[0] = (55.0, 0.75, 0.5)
-    padded[1] = (440.0, 0.5, 1.25)
+    padded[0] = (55.0, 0.75)
+    padded[1] = (440.0, 0.5)
     peaks = Peaks.from_padded_array(padded)
     assert peaks.items == (
-        Peak(freq_hz=55.0, amplitude=0.75, phase_rad=0.5),
-        Peak(freq_hz=440.0, amplitude=0.5, phase_rad=1.25),
+        Peak(freq_hz=55.0, amplitude=0.75),
+        Peak(freq_hz=440.0, amplitude=0.5),
     )
 
 
 def test_from_padded_array_rejects_wrong_shape() -> None:
     with pytest.raises(InvalidShapeError):
-        Peaks.from_padded_array(np.zeros((PEAK_COUNT, 2), dtype=np.float32))
+        Peaks.from_padded_array(np.zeros((PEAK_COUNT, 3), dtype=np.float32))
 
 
 @pytest.mark.parametrize(
     "rows",
     [
-        [(0.0, 0.0, 0.0), (440.0, 0.5, 0.0)],
-        [(55.0, 0.75, 0.0), (0.0, 0.5, 0.0)],
+        [(0.0, 0.0), (440.0, 0.5)],
+        [(55.0, 0.75), (0.0, 0.5)],
     ],
     ids=["gap-before-peak", "padding-with-amplitude"],
 )
 def test_from_padded_array_rejects_malformed_padding(
-    rows: list[tuple[float, float, float]],
+    rows: list[tuple[float, float]],
 ) -> None:
     padded = np.zeros((PEAK_COUNT, PEAK_FIELD_COUNT), dtype=np.float32)
     padded[: len(rows)] = rows
@@ -105,7 +99,6 @@ PEAK_STRATEGY: Final = st.builds(
     Peak,
     freq_hz=st.floats(min_value=1.0, max_value=24_000.0),
     amplitude=st.floats(min_value=0.0, max_value=1.0),
-    phase_rad=st.floats(min_value=-2 * math.pi, max_value=2 * math.pi),
 )
 
 

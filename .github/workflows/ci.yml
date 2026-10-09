@@ -34,6 +34,9 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.prod.yaml
+      SPECTRA_IMAGE: spectra:local
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -45,7 +48,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: cp .env.example .env
-      - run: docker compose up --detach --wait --no-build
+      - run: docker compose --file compose.yaml config --quiet
+      - run: docker compose up --detach --wait
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
       - run: docker compose exec -T api python -c "import http.client; c = http.client.HTTPConnection('s3', 7070, timeout=10); c.request('GET', '/'); c.getresponse()"

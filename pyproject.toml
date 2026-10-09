@@ -80,13 +80,25 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Top-level layering"
 type = "layers"
-layers = ["spectra.bootstrap", "spectra.gateway", "spectra.analysis", "spectra.shared"]
+layers = [
+    "spectra.bootstrap",
+    "spectra.gateway",
+    "spectra.tracks",
+    "spectra.analysis",
+    "spectra.shared",
+]
 
 [[tool.importlinter.contracts]]
 name = "Analysis context layering"
 type = "layers"
 containers = ["spectra.analysis"]
 layers = ["adapters", "application", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Tracks context layering"
+type = "layers"
+containers = ["spectra.tracks"]
+layers = ["application", "domain"]
 
 [[tool.importlinter.contracts]]
 name = "Analysis domain stays pure"
@@ -105,5 +117,5 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Gateway does not know concrete adapters"
 type = "forbidden"
-source_modules = ["spectra.gateway"]
+source_modules = ["spectra.gateway", "spectra.tracks"]
 forbidden_modules = ["spectra.analysis.adapters"]

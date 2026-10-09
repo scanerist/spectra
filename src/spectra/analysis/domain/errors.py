@@ -32,3 +32,7 @@ class InvalidSignalError(AnalysisError):
 
 class TempoNotFoundError(AnalysisError):
     pass
+
+
+class InvalidBeatGridError(AnalysisError):
+    pass

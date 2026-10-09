@@ -31,3 +31,22 @@ jobs:
       - run: uv run --frozen ruff format --check
       - run: uv run --frozen mypy
       - run: uv run --frozen lint-imports
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: spectra:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: docker run --detach --name spectra --publish 8000:8000 spectra:ci
+      - run: timeout 60 sh -c 'until docker exec spectra spectra-healthcheck; do sleep 1; done'
+      - run: test "$(docker exec spectra id -u)" = 10001
+      - run: docker exec spectra spectra-smoke
+      - if: failure()
+        run: docker logs spectra

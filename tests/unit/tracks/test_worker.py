@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 
 import pytest
 
@@ -190,3 +191,34 @@ async def test_a_job_for_a_forgotten_track_drops_its_upload() -> None:
     assert decoder.decoded == []
     assert await blobs.get(upload_key(TRACK)) is None
     assert jobs.finished == [AnalysisJob(track_id=TRACK)]
+
+
+class TimelineStoreGoesAway(InMemoryBlobStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.failures_left = 1
+
+    async def put(self, key: str, data: bytes) -> None:
+        if key == timeline_key(TRACK) and self.failures_left:
+            self.failures_left -= 1
+            raise OSError("the store went away")
+        await super().put(key, data)
+
+
+@pytest.mark.anyio
+async def test_a_job_interrupted_by_a_storage_error_can_be_retried() -> None:
+    board = memory_board()
+    blobs = TimelineStoreGoesAway()
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
+    await blobs.put(upload_key(TRACK), b"track")
+    for _ in range(2):
+        jobs = FakeJobQueue()
+        await jobs.enqueue(AnalysisJob(track_id=TRACK))
+        worker = AnalysisWorker(
+            decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+        )
+        with contextlib.suppress(OSError):
+            await worker.run()
+    assert isinstance(await board.current(TRACK), Ready)
+    assert await blobs.get(upload_key(TRACK)) is None

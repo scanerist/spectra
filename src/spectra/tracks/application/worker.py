@@ -60,8 +60,7 @@ class AnalysisWorker:
             if await self._is_pending(job.track_id):
                 await self._board.record(job.track_id, await self._process(job))
                 await self._evict(keep=job.track_id)
-            else:
-                await self._blobs.delete(upload_key(job.track_id))
+            await self._blobs.delete(upload_key(job.track_id))
             await self._jobs.done(job)
 
     async def _is_pending(self, track_id: TrackId) -> bool:
@@ -73,14 +72,10 @@ class AnalysisWorker:
             await self._blobs.delete(timeline_key(track_id))
 
     async def _process(self, job: AnalysisJob) -> TrackStatus:
-        key = upload_key(job.track_id)
-        data = await self._blobs.get(key)
+        data = await self._blobs.get(upload_key(job.track_id))
         if data is None:
             return UPLOAD_GONE
-        try:
-            outcome = await self._analyse(job, data)
-        finally:
-            await self._blobs.delete(key)
+        outcome = await self._analyse(job, data)
         if isinstance(outcome, Failed):
             return outcome
         summary, timeline = outcome

@@ -20,7 +20,7 @@ class Mode(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPECTRA_", frozen=True)
+    model_config = SettingsConfigDict(env_prefix="SPECTRA_", frozen=True, hide_input_in_errors=True)
 
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65_535)
@@ -40,7 +40,9 @@ class Settings(BaseSettings):
 
 
 class PostgresSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPECTRA_POSTGRES_", frozen=True)
+    model_config = SettingsConfigDict(
+        env_prefix="SPECTRA_POSTGRES_", frozen=True, hide_input_in_errors=True
+    )
 
     host: str
     port: int = Field(default=5432, ge=1, le=65_535)
@@ -50,7 +52,9 @@ class PostgresSettings(BaseSettings):
 
 
 class RedisSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPECTRA_REDIS_", frozen=True)
+    model_config = SettingsConfigDict(
+        env_prefix="SPECTRA_REDIS_", frozen=True, hide_input_in_errors=True
+    )
 
     host: str
     port: int = Field(default=6379, ge=1, le=65_535)
@@ -59,7 +63,9 @@ class RedisSettings(BaseSettings):
 
 
 class S3Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPECTRA_S3_", frozen=True)
+    model_config = SettingsConfigDict(
+        env_prefix="SPECTRA_S3_", frozen=True, hide_input_in_errors=True
+    )
 
     url: str
     region: str = "us-east-1"

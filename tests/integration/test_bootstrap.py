@@ -6,7 +6,14 @@ from pydantic import ValidationError
 
 from spectra.bootstrap import app as bootstrap_app
 from spectra.bootstrap.hosted import postgres_url
-from spectra.bootstrap.settings import HostedSettings, LogLevel, Mode, Settings
+from spectra.bootstrap.settings import (
+    HostedSettings,
+    LogLevel,
+    Mode,
+    PostgresSettings,
+    S3Settings,
+    Settings,
+)
 
 
 def test_settings_defaults() -> None:
@@ -102,6 +109,17 @@ def test_hosted_settings_require_each_connection(
     monkeypatch.delenv(variable)
     with pytest.raises(ValidationError):
         HostedSettings.from_environment()
+
+
+def test_a_settings_error_does_not_show_the_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_hosted_environment(monkeypatch)
+    monkeypatch.delenv("SPECTRA_POSTGRES_HOST")
+    monkeypatch.delenv("SPECTRA_S3_URL")
+    for settings in (PostgresSettings, S3Settings):
+        with pytest.raises(ValidationError) as error:
+            settings()
+        shown = str(error.value)
+        assert all(secret not in shown for secret in ("p@ss:w/rd", "s3-secret"))
 
 
 def test_postgres_url_escapes_the_password(monkeypatch: pytest.MonkeyPatch) -> None:

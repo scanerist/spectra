@@ -97,6 +97,9 @@ jobs:
     env:
       COMPOSE_FILE: compose.prod.yaml
       SPECTRA_IMAGE: spectra:local
+      SPECTRA_DOMAIN: localhost
+      SPECTRA_HTTP_PORT: 8080
+      SPECTRA_HTTPS_PORT: 8443
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -112,6 +115,7 @@ jobs:
       - run: docker compose up --detach --wait
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
-      - run: docker compose exec -T api python -c "import http.client; c = http.client.HTTPConnection('s3', 7070, timeout=10); c.request('GET', '/'); c.getresponse()"
+      - run: test "$(docker compose ps --quiet --status running worker)" != ""
+      - run: curl --fail --silent --show-error --insecure https://localhost:8443/ready
       - if: failure()
         run: docker compose logs

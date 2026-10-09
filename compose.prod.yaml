@@ -10,27 +10,99 @@ x-service: &service
       max-size: 10m
       max-file: "3"
 
+x-spectra: &spectra
+  <<: *service
+  image: ${SPECTRA_IMAGE:?set SPECTRA_IMAGE in the production environment on GitHub}
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  environment:
+    SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
+    SPECTRA_MODE: hosted
+    SPECTRA_POSTGRES_HOST: postgres
+    SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the production environment on GitHub}
+    SPECTRA_REDIS_HOST: redis
+    SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in the production environment on GitHub}
+    SPECTRA_S3_URL: http://s3:7070
+    SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in the production environment on GitHub}
+    SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in the production environment on GitHub}
+  mem_limit: ${SPECTRA_API_MEMORY_LIMIT:-1g}
+  pids_limit: 256
+
 services:
+  migrate:
+    <<: *spectra
+    command: ["spectra-migrate"]
+    restart: "no"
+    networks:
+      - backend
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+
   api:
-    <<: *service
-    image: ${SPECTRA_IMAGE:?set SPECTRA_IMAGE in the production environment on GitHub}
-    environment:
-      SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
-    ports:
-      - "${SPECTRA_BIND_ADDRESS:?set SPECTRA_BIND_ADDRESS in the production environment on GitHub}:${SPECTRA_API_PORT:?set SPECTRA_API_PORT in the production environment on GitHub}:8000"
+    <<: *spectra
     networks:
       - edge
       - backend
+    healthcheck:
+      start_period: 10s
+      start_interval: 2s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *spectra
+    command: ["spectra-worker"]
+    networks:
+      - backend
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s
+    mem_limit: ${SPECTRA_WORKER_MEMORY_LIMIT:-2g}
+    pids_limit: 256
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    <<: *service
+    image: caddy:2.10.2-alpine
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - ${SPECTRA_DOMAIN:?set SPECTRA_DOMAIN in the production environment on GitHub}
+      - --to
+      - api:8000
+    ports:
+      - "${SPECTRA_HTTP_PORT:?set SPECTRA_HTTP_PORT in the production environment on GitHub}:80"
+      - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443"
+      - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443/udp"
+    networks:
+      - edge
     read_only: true
     tmpfs:
       - /tmp
     cap_drop:
       - ALL
-    mem_limit: ${SPECTRA_API_MEMORY_LIMIT:-2g}
-    pids_limit: 256
-    healthcheck:
-      start_period: 10s
-      start_interval: 2s
+    cap_add:
+      - NET_BIND_SERVICE
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
 
   postgres:
     <<: *service
@@ -85,6 +157,11 @@ services:
     volumes:
       - s3-objects:/data/s3
       - s3-iam:/data/iam
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:7070/ 2>&1 | grep -q HTTP/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 networks:
   edge:
@@ -96,3 +173,5 @@ volumes:
   redis:
   s3-objects:
   s3-iam:
+  caddy-data:
+  caddy-config:

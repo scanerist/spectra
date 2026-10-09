@@ -10,26 +10,68 @@ x-service: &service
       max-size: 10m
       max-file: "3"
 
+x-spectra: &spectra
+  <<: *service
+  image: spectra:local
+  build: .
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  environment:
+    SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
+    SPECTRA_MODE: hosted
+    SPECTRA_POSTGRES_HOST: postgres
+    SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    SPECTRA_REDIS_HOST: redis
+    SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    SPECTRA_S3_URL: http://s3:7070
+    SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+    SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+
 services:
+  migrate:
+    <<: *spectra
+    command: ["spectra-migrate"]
+    restart: "no"
+    networks:
+      - backend
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+
   api:
-    <<: *service
-    build: .
-    image: spectra:local
-    environment:
-      SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
+    <<: *spectra
     ports:
       - "${SPECTRA_BIND_ADDRESS:?set SPECTRA_BIND_ADDRESS in .env}:${SPECTRA_API_PORT:?set SPECTRA_API_PORT in .env}:8000"
     networks:
       - edge
       - backend
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
     healthcheck:
       start_period: 10s
       start_interval: 2s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *spectra
+    command: ["spectra-worker"]
+    networks:
+      - backend
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   postgres:
     <<: *service
@@ -84,6 +126,11 @@ services:
     volumes:
       - s3-objects:/data/s3
       - s3-iam:/data/iam
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:7070/ 2>&1 | grep -q HTTP/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 networks:
   edge:

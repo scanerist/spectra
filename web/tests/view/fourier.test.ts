@@ -121,4 +121,20 @@ describe("epicycles", () => {
     fourier.step(snapshot(1, [{ freqHz: 100, amp: 1 }]), 0.5, true);
     expect(fourier.epicycles[0]?.angleRad).toBeGreaterThan(angleRad ?? 0);
   });
+
+  it("never show more than four, letting the weakest fading ones go first", () => {
+    const fourier = morph();
+    const low = [40, 80, 160, 320].map((freqHz, index) => ({ freqHz, amp: 1 - index * 0.2 }));
+    const high = [1000, 2000, 4000, 8000].map((freqHz) => ({ freqHz, amp: 1 }));
+    fourier.step(snapshot(1, low), 0.016, true);
+    fourier.step(snapshot(1, high.slice(0, 2)), 0.016, true);
+    expect(fourier.epicycles).toHaveLength(EPICYCLE_LIMIT);
+    expect(fourier.epicycles.map((epicycle) => epicycle.targetFreqHz)).toEqual([
+      40, 80, 1000, 2000,
+    ]);
+    fourier.step(snapshot(1, high), 0.016, true);
+    expect(fourier.epicycles.map((epicycle) => epicycle.targetFreqHz)).toEqual([
+      1000, 2000, 4000, 8000,
+    ]);
+  });
 });

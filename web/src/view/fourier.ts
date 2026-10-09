@@ -62,8 +62,16 @@ export class FourierMorph {
         epicycle.angleRad += TURN_RAD * epicycle.freqHz * ROTATION_SCALE * dtS;
       }
     }
-    this.epicycles = this.epicycles
-      .filter((epicycle) => epicycle.targetAmp > 0 || epicycle.amp > FADED_AMP)
+    const visible = this.epicycles.filter(
+      (epicycle) => epicycle.targetAmp > 0 || epicycle.amp > FADED_AMP,
+    );
+    const fading = visible
+      .filter((epicycle) => epicycle.targetAmp === 0)
+      .sort((left, right) => right.amp - left.amp);
+    const room = EPICYCLE_LIMIT - (visible.length - fading.length);
+    const kept = new Set(fading.slice(0, Math.max(0, room)));
+    this.epicycles = visible
+      .filter((epicycle) => epicycle.targetAmp > 0 || kept.has(epicycle))
       .sort((left, right) => left.targetFreqHz - right.targetFreqHz);
   }
 

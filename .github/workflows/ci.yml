@@ -45,9 +45,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: cp .env.example .env
-      - run: docker compose -f compose.yaml -f compose.dev.yaml up --detach --wait --no-build
+      - run: docker compose up --detach --wait --no-build
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
-      - run: curl --silent --output /dev/null --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:7070/
+      - run: docker compose exec -T api python -c "import http.client; c = http.client.HTTPConnection('s3', 7070, timeout=10); c.request('GET', '/'); c.getresponse()"
       - if: failure()
         run: docker compose logs

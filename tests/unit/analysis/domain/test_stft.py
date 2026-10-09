@@ -6,7 +6,9 @@ from spectra.analysis.domain.stft import (
     BIN_COUNT,
     FRAME_RATE_HZ,
     HOP_SAMPLES,
+    TIMELINE_STFT,
     WINDOW_SAMPLES,
+    StftShape,
     bin_freqs_hz,
     frame_count,
     stft_chunks,
@@ -63,3 +65,21 @@ def test_chunks_concatenate_to_the_whole_transform() -> None:
 def test_silence_has_zero_magnitude() -> None:
     magnitudes = stft_magnitudes(AudioSignal(samples=np.zeros(4_096, dtype=np.float32)))
     assert not magnitudes.any()
+
+
+def test_longer_window_resolves_finer_frequencies() -> None:
+    shape = StftShape(window_samples=16_384, hop_samples=8_192)
+    magnitudes = np.concatenate(list(stft_chunks(signal_of(sine(55.0, 2.0)), shape=shape)))
+    peak_hz = shape.bin_freqs_hz()[np.argmax(magnitudes[1:-1].mean(axis=0))]
+    assert abs(peak_hz - 55.0) <= ANALYSIS_SAMPLE_RATE_HZ / 16_384 / 2
+
+
+def test_bin_limit_keeps_only_the_lowest_bins() -> None:
+    signal = signal_of(noise(0.5))
+    limited = np.concatenate(list(stft_chunks(signal, bin_limit=100)))
+    np.testing.assert_array_equal(limited, stft_magnitudes(signal)[:, :100])
+
+
+def test_frame_times_step_by_the_hop() -> None:
+    times_s = TIMELINE_STFT.frame_times_s(3)
+    np.testing.assert_allclose(times_s, [0.0, 512 / 44_100, 1_024 / 44_100])

@@ -8,10 +8,12 @@ from fastapi.testclient import TestClient
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
-from spectra.gateway.routes import create_router, install_track_service
+from spectra.gateway.routes import create_router, install_track_service, install_upload_admission
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.adapters.memory import InMemoryBlobStore
+from spectra.tracks.application.admission import UploadAdmission
+from spectra.tracks.application.ports import UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.blobs import timeline_key
 from spectra.tracks.domain.track import (
@@ -23,17 +25,27 @@ from spectra.tracks.domain.track import (
     TrackSummary,
 )
 from tests.contract.timeline_fixture import golden_analysis
-from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, record_now
+from tests.fakes import (
+    ExhaustedQuota,
+    FakeDecoder,
+    FakeJobQueue,
+    UnlimitedQuota,
+    memory_board,
+    record_now,
+)
 
 DATA: Final = b"RIFF pretend this is audio"
 LIMIT_BYTES: Final = 1_000
 
 
 class Api:
-    def __init__(self, *, decoder: FakeDecoder | None = None) -> None:
+    def __init__(
+        self, *, decoder: FakeDecoder | None = None, quota: UploadQuota | None = None
+    ) -> None:
         self.board = memory_board()
         self.jobs = FakeJobQueue()
         self.blobs = InMemoryBlobStore()
+        self.clients = UnlimitedQuota()
         service = TrackService(
             decoder=decoder or FakeDecoder(),
             board=self.board,
@@ -45,6 +57,7 @@ class Api:
         app.include_router(create_router())
         install_error_handlers(app)
         install_track_service(app, service)
+        install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
         install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
         self.client = TestClient(app, raise_server_exceptions=False)
 
@@ -59,6 +72,28 @@ def test_upload_answers_202_with_the_track_id(api: Api) -> None:
     assert response.status_code == 202
     assert response.json() == {"track_id": TrackId.of_content(DATA).value}
     assert len(api.jobs.jobs) == 1
+
+
+def test_uploads_are_counted_per_client_address(api: Api) -> None:
+    api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert api.clients.clients == ["testclient"]
+
+
+def test_an_exhausted_quota_is_rate_limited_with_retry_after() -> None:
+    api = Api(quota=ExhaustedQuota(retry_after_s=41.2))
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert response.status_code == 429
+    assert response.json()["error"] == "rate_limited"
+    assert response.headers["retry-after"] == "42"
+    assert api.jobs.jobs == []
+
+
+def test_a_rate_limited_upload_is_refused_before_its_body_is_read() -> None:
+    api = Api(quota=ExhaustedQuota(retry_after_s=1.0))
+    body = b"--b\r\ngarbage without headers"
+    headers = {"content-type": "multipart/form-data; boundary=b"}
+    response = api.client.post("/tracks", content=body, headers=headers)
+    assert response.status_code == 429
 
 
 def test_upload_without_a_file_part_is_no_file(api: Api) -> None:

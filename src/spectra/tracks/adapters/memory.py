@@ -3,7 +3,9 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from spectra.shared.clock import Clock
 from spectra.tracks.application.ports import AnalysisJob
+from spectra.tracks.domain.quota import QuotaDecision, UploadQuotaPolicy
 from spectra.tracks.domain.track import TrackId, TrackStatus, is_final
 
 
@@ -97,3 +99,20 @@ class InMemoryJobQueue:
                 pending.append(job)
         self._jobs.put_nowait(None)
         return pending
+
+
+class InMemoryUploadQuota:
+    def __init__(self, *, policy: UploadQuotaPolicy, clock: Clock) -> None:
+        self._policy = policy
+        self._clock = clock
+        self._window = 0
+        self._used: dict[str, int] = {}
+
+    async def spend(self, client: str) -> QuotaDecision:
+        now_s = self._clock.now_s()
+        window = self._policy.window_of(now_s)
+        if window != self._window:
+            self._window = window
+            self._used.clear()
+        self._used[client] = self._used.get(client, 0) + 1
+        return self._policy.decide(used=self._used[client], now_s=now_s)

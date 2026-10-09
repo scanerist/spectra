@@ -160,11 +160,12 @@ def test_run_serves_the_app_with_configured_host_and_port(
 ) -> None:
     served: dict[str, object] = {}
 
-    def fake_uvicorn_run(app: FastAPI, *, host: str, port: int, log_level: str) -> None:
-        served.update(app=app, host=host, port=port, log_level=log_level)
+    def fake_uvicorn_run(app: FastAPI, **options: object) -> None:
+        served.update(app=app, **options)
 
     monkeypatch.setattr(uvicorn, "run", fake_uvicorn_run)
     monkeypatch.setenv("SPECTRA_PORT", "9002")
     bootstrap_app.run()
     assert isinstance(served["app"], FastAPI)
     assert (served["host"], served["port"], served["log_level"]) == ("127.0.0.1", 9002, "info")
+    assert (served["proxy_headers"], served["forwarded_allow_ips"]) == (True, "127.0.0.1")

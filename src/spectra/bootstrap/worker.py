@@ -17,7 +17,7 @@ DAY_S: Final = 86_400.0
 
 async def serve(settings: Settings, hosted: HostedSettings, *, stop: asyncio.Event) -> None:
     async with open_hosted(hosted, consumer=consumer_name()) as adapters:
-        parts = hosted_parts(adapters)
+        parts = hosted_parts(adapters, settings)
         worker = analysis_worker(parts)
         janitor = Janitor(
             expiry=adapters.store,

@@ -1,19 +1,25 @@
 from dataclasses import dataclass
+from typing import Final
 
 from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.hosted import HostedAdapters
 from spectra.bootstrap.settings import Settings
 from spectra.gateway.timeline_codec import encode_timeline
+from spectra.shared.clock import MonotonicClock
 from spectra.tracks.adapters.memory import (
     InMemoryBlobStore,
     InMemoryJobQueue,
     InMemoryProgressFeed,
     InMemoryTrackStore,
+    InMemoryUploadQuota,
 )
-from spectra.tracks.application.ports import BlobStore, JobQueue
+from spectra.tracks.application.ports import BlobStore, JobQueue, UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.application.worker import AnalysisWorker
+from spectra.tracks.domain.quota import UploadQuotaPolicy
+
+HOUR_S: Final = 3_600.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -21,6 +27,15 @@ class TrackParts:
     board: StatusBoard
     blobs: BlobStore
     jobs: JobQueue
+    quota: UploadQuota
+
+
+def upload_quota_policy(settings: Settings) -> UploadQuotaPolicy:
+    return UploadQuotaPolicy(uploads=settings.uploads_per_hour, window_s=HOUR_S)
+
+
+def memory_quota(settings: Settings) -> InMemoryUploadQuota:
+    return InMemoryUploadQuota(policy=upload_quota_policy(settings), clock=MonotonicClock())
 
 
 def local_parts(settings: Settings) -> TrackParts:
@@ -30,14 +45,16 @@ def local_parts(settings: Settings) -> TrackParts:
         ),
         blobs=InMemoryBlobStore(),
         jobs=InMemoryJobQueue(),
+        quota=memory_quota(settings),
     )
 
 
-def hosted_parts(adapters: HostedAdapters) -> TrackParts:
+def hosted_parts(adapters: HostedAdapters, settings: Settings) -> TrackParts:
     return TrackParts(
         board=StatusBoard(store=adapters.store, feed=adapters.feed),
         blobs=adapters.blobs,
         jobs=adapters.jobs,
+        quota=memory_quota(settings),
     )
 
 

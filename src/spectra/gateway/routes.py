@@ -1,9 +1,10 @@
 from typing import Annotated, Final, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, File, Response, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.requests import HTTPConnection
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from starlette.datastructures import UploadFile
 
 from spectra.gateway.errors import (
     FAILURE_CODES,
@@ -15,13 +16,16 @@ from spectra.gateway.events import EVENT_STREAM_HEADERS, EVENT_STREAM_MEDIA_TYPE
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
+from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
 from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackSummary
 
 TRACK_SERVICE_STATE: Final = "track_service"
+UPLOAD_ADMISSION_STATE: Final = "upload_admission"
 UPLOAD_CHUNK_BYTES: Final = 1 << 20
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
+UNKNOWN_CLIENT: Final = "unknown"
 
 
 class HealthReport(BaseModel):
@@ -48,8 +52,24 @@ def track_service(connection: HTTPConnection) -> TrackService:
     return service
 
 
+def install_upload_admission(app: FastAPI, admission: UploadAdmission) -> None:
+    setattr(app.state, UPLOAD_ADMISSION_STATE, admission)
+
+
+def upload_admission(connection: HTTPConnection) -> UploadAdmission:
+    admission = getattr(connection.app.state, UPLOAD_ADMISSION_STATE, None)
+    if not isinstance(admission, UploadAdmission):
+        raise GatewayNotConfiguredError("the upload admission is not installed on the app")
+    return admission
+
+
 type Service = Annotated[TrackService, Depends(track_service)]
+type Admission = Annotated[UploadAdmission, Depends(upload_admission)]
 type Probes = Annotated[Readiness, Depends(readiness)]
+
+
+def client_address(request: Request) -> str:
+    return request.client.host if request.client is not None else UNKNOWN_CLIENT
 
 
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
@@ -91,10 +111,15 @@ def create_router() -> APIRouter:
 
     @router.post("/tracks", status_code=status.HTTP_202_ACCEPTED)
     async def upload_track(
-        service: Service,
-        file: Annotated[UploadFile | None, File()] = None,
+        request: Request, service: Service, admission: Admission
     ) -> TrackCreated:
-        data = await read_upload(file, limit=service.max_upload_bytes)
+        await admission.admit(client_address(request))
+        async with request.form(max_files=1, max_fields=0) as form:
+            upload = form.get("file")
+            data = await read_upload(
+                upload if isinstance(upload, UploadFile) else None,
+                limit=service.max_upload_bytes,
+            )
         return TrackCreated(track_id=(await service.submit(data)).value)
 
     @router.get("/tracks/{track_id}")

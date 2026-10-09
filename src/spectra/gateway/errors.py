@@ -1,4 +1,5 @@
 import logging
+import math
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from http import HTTPStatus
@@ -19,6 +20,7 @@ from spectra.tracks.domain.errors import (
     InvalidTrackIdError,
     TrackNotFoundError,
     TrackTooLongError,
+    UploadQuotaExceededError,
 )
 from spectra.tracks.domain.track import FailureCode
 
@@ -33,6 +35,7 @@ class ErrorCode(StrEnum):
     ANALYSIS_FAILED = "analysis_failed"
     TRACK_NOT_FOUND = "track_not_found"
     NOT_READY = "not_ready"
+    RATE_LIMITED = "rate_limited"
     BUSY = "busy"
     UNAVAILABLE = "unavailable"
     INTERNAL = "internal"
@@ -46,6 +49,7 @@ STATUSES: Final[Mapping[ErrorCode, HTTPStatus]] = {
     ErrorCode.ANALYSIS_FAILED: HTTPStatus.UNPROCESSABLE_CONTENT,
     ErrorCode.TRACK_NOT_FOUND: HTTPStatus.NOT_FOUND,
     ErrorCode.NOT_READY: HTTPStatus.CONFLICT,
+    ErrorCode.RATE_LIMITED: HTTPStatus.TOO_MANY_REQUESTS,
     ErrorCode.BUSY: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.UNAVAILABLE: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -109,6 +113,14 @@ async def handle_http_error(request: Request, error: Exception) -> Response:
     return await http_exception_handler(request, error)
 
 
+async def handle_quota_error(request: Request, error: Exception) -> JSONResponse:
+    if not isinstance(error, UploadQuotaExceededError):
+        return await handle_unexpected_error(request, error)
+    response = error_response(ErrorCode.RATE_LIMITED, str(error))
+    response.headers["Retry-After"] = str(max(1, math.ceil(error.retry_after_s)))
+    return response
+
+
 def domain_handler(code: ErrorCode) -> Callable[[Request, Exception], JSONResponse]:
     def handle(_request: Request, error: Exception) -> JSONResponse:
         return error_response(code, str(error))
@@ -120,6 +132,7 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ApiError, handle_api_error)
     app.add_exception_handler(RequestValidationError, handle_unreadable_request)
     app.add_exception_handler(HTTPException, handle_http_error)
+    app.add_exception_handler(UploadQuotaExceededError, handle_quota_error)
     for error_type, code in DOMAIN_ERRORS.items():
         app.add_exception_handler(error_type, domain_handler(code))
     app.add_exception_handler(Exception, handle_unexpected_error)

@@ -17,8 +17,13 @@ from spectra.bootstrap.tracks import (
 )
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.readiness import Readiness, install_readiness
-from spectra.gateway.routes import create_router, install_track_service
+from spectra.gateway.routes import (
+    create_router,
+    install_track_service,
+    install_upload_admission,
+)
 from spectra.gateway.upload_limit import install_upload_limit
+from spectra.tracks.application.admission import UploadAdmission
 
 LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
@@ -31,6 +36,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
         if hosted is None:
             parts = local_parts(settings)
             install_track_service(app, track_service(parts, settings))
+            install_upload_admission(app, UploadAdmission(quota=parts.quota))
             worker = analysis_worker(parts)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
@@ -38,7 +44,9 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 await worker.close()
         else:
             async with open_hosted(hosted, consumer=consumer_name()) as adapters:
-                install_track_service(app, track_service(hosted_parts(adapters), settings))
+                hosted_tracks = hosted_parts(adapters, settings)
+                install_track_service(app, track_service(hosted_tracks, settings))
+                install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))
                 install_readiness(
                     app,
                     Readiness(
@@ -77,4 +85,6 @@ def run() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
     )

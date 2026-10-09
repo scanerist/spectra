@@ -6,6 +6,7 @@ from spectra.analysis.domain.track_analysis import TrackAnalysis
 from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
+from spectra.tracks.domain.quota import QuotaDecision
 from spectra.tracks.domain.track import TrackId, TrackStatus
 
 
@@ -109,3 +110,23 @@ def record_now(board: StatusBoard, track_id: TrackId, status: TrackStatus) -> No
 
 def fake_timeline(analysis: TrackAnalysis) -> bytes:
     return f"timeline of {analysis.frame_count} frames".encode()
+
+
+class UnlimitedQuota:
+    def __init__(self) -> None:
+        self.clients: list[str] = []
+
+    async def spend(self, client: str) -> QuotaDecision:
+        self.clients.append(client)
+        return QuotaDecision(allowed=True, retry_after_s=0.0)
+
+
+class ExhaustedQuota:
+    def __init__(self, *, retry_after_s: float) -> None:
+        self._retry_after_s = retry_after_s
+
+        self.clients: list[str] = []
+
+    async def spend(self, client: str) -> QuotaDecision:
+        self.clients.append(client)
+        return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)

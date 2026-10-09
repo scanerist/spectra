@@ -24,3 +24,13 @@ class TrackTooLongError(TracksError):
 
 class AnalysisQueueFullError(TracksError):
     pass
+
+
+class InvalidQuotaError(TracksError):
+    pass
+
+
+class UploadQuotaExceededError(TracksError):
+    def __init__(self, message: str, *, retry_after_s: float) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s

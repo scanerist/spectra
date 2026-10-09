@@ -18,7 +18,7 @@ from spectra.analysis.domain.track_analysis import (
     TrackAnalysis,
     analyse_signal,
 )
-from tests.signals import SAMPLE_RATE_HZ, kick_train, noise, signal_of, silence, sine
+from tests.signals import SAMPLE_RATE_HZ, Accent, kick_train, noise, signal_of, silence, sine
 
 BPM: Final = 128.0
 BAR_S: Final = 4 * 60.0 / BPM
@@ -149,3 +149,15 @@ def test_minimal_analysis_is_valid_and_read_only() -> None:
 def test_analysis_rejects_inconsistent_parts(overrides: dict[str, object]) -> None:
     with pytest.raises(InvalidTrackAnalysisError):
         minimal_analysis(**overrides)
+
+
+def test_grid_stays_on_the_kicks_to_the_end_of_a_seven_minute_track() -> None:
+    bpm = 124.0
+    beat_s = 60.0 / bpm
+    analysis = analyse_signal(signal_of(kick_train(bpm, 420.0, accent=Accent(every=4))))
+    last_kick_s = math.floor((420.0 - 0.3) / beat_s) * beat_s
+    grid_beat_s = analysis.grid.tempo.beat_duration_s
+    beats = round((last_kick_s - analysis.grid.offset_s) / grid_beat_s)
+    nearest_grid_s = analysis.grid.offset_s + beats * grid_beat_s
+    assert nearest_grid_s == pytest.approx(last_kick_s, abs=0.01)
+    assert min(analysis.grid.offset_s, analysis.grid.bar_duration_s - analysis.grid.offset_s) < 0.01

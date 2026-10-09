@@ -18,6 +18,8 @@ COARSE_HARMONICS: Final = 4
 REFINE_HARMONICS: Final = 16
 REFINE_SPAN: Final = 0.03
 REFINE_STEP_BPM: Final = 0.01
+POLISH_SPAN_BPM: Final = 0.05
+POLISH_STEP_BPM: Final = 0.0005
 DETREND_S: Final = 0.5
 PHASE_STEP_FRAMES: Final = 0.25
 OCTAVE_FACTORS: Final = (0.5, 1.0, 2.0)
@@ -74,9 +76,10 @@ def tempo_prior(bpm: float) -> float:
     return math.exp(-0.5 * octaves * octaves)
 
 
-def harmonic_score(correlation: Float64Array, *, period: float, harmonics: int) -> float:
+def harmonic_score(correlation: Float64Array, *, period: float, harmonics: int | None) -> float:
     usable_lag = correlation.size // 2
-    lags = period * np.arange(1, harmonics + 1)
+    count = math.floor(usable_lag / period) if harmonics is None else harmonics
+    lags = period * np.arange(1, count + 1)
     lags = lags[lags < usable_lag]
     if lags.size == 0:
         return 0.0
@@ -97,17 +100,37 @@ def coarse_tempo(correlation: Float64Array, *, frame_rate_hz: float) -> float:
 
 
 def refine_tempo(correlation: Float64Array, *, bpm: float, frame_rate_hz: float) -> float:
-    grid = np.arange(bpm * (1 - REFINE_SPAN), bpm * (1 + REFINE_SPAN), REFINE_STEP_BPM)
-    grid = grid[(grid >= MIN_SEARCH_BPM) & (grid <= MAX_SEARCH_BPM)]
-    if grid.size == 0:
-        return bpm
+    near = best_on_grid(
+        correlation,
+        np.arange(bpm * (1 - REFINE_SPAN), bpm * (1 + REFINE_SPAN), REFINE_STEP_BPM),
+        frame_rate_hz=frame_rate_hz,
+        harmonics=REFINE_HARMONICS,
+    )
+    return best_on_grid(
+        correlation,
+        np.arange(near - POLISH_SPAN_BPM, near + POLISH_SPAN_BPM, POLISH_STEP_BPM),
+        frame_rate_hz=frame_rate_hz,
+        harmonics=None,
+    )
+
+
+def best_on_grid(
+    correlation: Float64Array,
+    candidates: Float64Array,
+    *,
+    frame_rate_hz: float,
+    harmonics: int | None,
+) -> float:
+    inside = candidates[(candidates >= MIN_SEARCH_BPM) & (candidates <= MAX_SEARCH_BPM)]
+    if inside.size == 0:
+        return float(np.clip(candidates.mean(), MIN_SEARCH_BPM, MAX_SEARCH_BPM))
     scores = [
         harmonic_score(
-            correlation, period=period_frames(candidate, frame_rate_hz), harmonics=REFINE_HARMONICS
+            correlation, period=period_frames(candidate, frame_rate_hz), harmonics=harmonics
         )
-        for candidate in grid
+        for candidate in inside
     ]
-    return float(grid[int(np.argmax(scores))])
+    return float(inside[int(np.argmax(scores))])
 
 
 def fit_grid(pulses: Float64Array, *, period_frames: float) -> GridFit:

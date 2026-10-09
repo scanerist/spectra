@@ -77,3 +77,8 @@ def test_grid_fit_finds_the_phase_of_a_pulse_train() -> None:
 
 def test_period_of_120_bpm_at_100_frames_per_second_is_50_frames() -> None:
     assert period_frames(120.0, 100.0) == 50.0
+
+
+@pytest.mark.parametrize("bpm", [124.0, 145.0], ids=lambda b: f"{b:g}")
+def test_seven_minute_track_tempo_is_exact_enough_not_to_drift(bpm: float) -> None:
+    assert tempo_of(kick_train(bpm, 420.0)) == pytest.approx(bpm, abs=0.002)

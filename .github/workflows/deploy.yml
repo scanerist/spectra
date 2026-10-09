@@ -63,6 +63,7 @@ jobs:
           SPECTRA_LOG_LEVEL: ${{ vars.SPECTRA_LOG_LEVEL }}
           SPECTRA_API_MEMORY_LIMIT: ${{ vars.SPECTRA_API_MEMORY_LIMIT }}
           SPECTRA_WORKER_MEMORY_LIMIT: ${{ vars.SPECTRA_WORKER_MEMORY_LIMIT }}
+          SPECTRA_UPLOADS_PER_HOUR: ${{ vars.SPECTRA_UPLOADS_PER_HOUR }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
@@ -71,7 +72,7 @@ jobs:
           environment_file="$RUNNER_TEMP/spectra.env"
           install -m 600 /dev/null "$environment_file"
           for name in SPECTRA_IMAGE SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT \
-            SPECTRA_LOG_LEVEL SPECTRA_API_MEMORY_LIMIT SPECTRA_WORKER_MEMORY_LIMIT \
+            SPECTRA_LOG_LEVEL SPECTRA_API_MEMORY_LIMIT SPECTRA_WORKER_MEMORY_LIMIT SPECTRA_UPLOADS_PER_HOUR \
             POSTGRES_PASSWORD REDIS_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY; do
             value="${!name}"
             if [ -z "$value" ]; then

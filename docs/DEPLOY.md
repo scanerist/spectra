@@ -57,6 +57,7 @@ Settings → Environments → `production`. Там же можно включи�
 | `SPECTRA_LOG_LEVEL` | необязательно, по умолчанию `info` |
 | `SPECTRA_API_MEMORY_LIMIT` | необязательно, по умолчанию `2g` (так же ограничен `migrate`): загрузка в 256 МиБ на пике занимает в api около трёх своих размеров |
 | `SPECTRA_WORKER_MEMORY_LIMIT` | необязательно, по умолчанию `2g` |
+| `SPECTRA_UPLOADS_PER_HOUR` | необязательно, по умолчанию `20`: загрузок в час с одного IP |
 
 `SPECTRA_BIND_ADDRESS` и `SPECTRA_API_PORT` больше не нужны: api наружу не публикуется, их можно удалить из environment.
 
@@ -74,6 +75,8 @@ Compose задаёт их сам, перечислены для запуска �
 | `SPECTRA_S3_URL`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY`, `_BUCKET` | —, `us-east-1`, —, —, `spectra` | S3 |
 | `SPECTRA_RETENTION_DAYS` | `30` | сколько дней хранить разбор после последнего открытия |
 | `SPECTRA_SWEEP_INTERVAL_S` | `3600` | как часто воркер ищет устаревшие разборы |
+| `SPECTRA_UPLOADS_PER_HOUR` | `20` | загрузок в час с одного IP-адреса, сверх — `429 rate_limited` |
+| `SPECTRA_FORWARDED_ALLOW_IPS` | `127.0.0.1` | от каких прокси верить `X-Forwarded-For`; в проде `*`, потому что api доступен только через Caddy, а Caddy отбрасывает присланный клиентом заголовок |
 
 Прочерк — значение обязательно в серверном режиме.
 

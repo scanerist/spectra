@@ -21,6 +21,8 @@ x-spectra: &spectra
   environment:
     SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
     SPECTRA_MODE: hosted
+    SPECTRA_FORWARDED_ALLOW_IPS: "*"
+    SPECTRA_UPLOADS_PER_HOUR: ${SPECTRA_UPLOADS_PER_HOUR:-20}
     SPECTRA_POSTGRES_HOST: postgres
     SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the production environment on GitHub}
     SPECTRA_REDIS_HOST: redis

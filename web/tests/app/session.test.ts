@@ -15,6 +15,7 @@ const TIMELINE = { frameCount: 1 } as Timeline;
 
 class FakeApi implements Api {
   uploads: string[] = [];
+  following = 0;
   constructor(
     private readonly events: TrackEvent[],
     private readonly uploadError: ApiError | null = null,
@@ -37,15 +38,19 @@ class FakeApi implements Api {
   }
 
   follow(_trackId: string, onEvent: (event: TrackEvent) => void): () => void {
+    this.following += 1;
     queueMicrotask(() => {
       for (const event of this.events) {
         onEvent(event);
       }
     });
-    return () => undefined;
+    return () => {
+      this.following -= 1;
+    };
   }
 }
 
+const LIVE = new AbortController().signal;
 const WAV = new File(["RIFF"], "kicks.wav", { type: "audio/wav" });
 const READY: TrackEvent[] = [
   { kind: "progress", stage: "tempo", progress: 0.55 },
@@ -65,8 +70,11 @@ describe("loading a track", () => {
   it("uploads the file, follows the analysis and returns everything needed to play", async () => {
     const api = new FakeApi(READY);
     const progress: [number, string][] = [];
-    const loaded = await loadTrack(WAV, { api, decode: async () => "audio" }, (share, label) =>
-      progress.push([share, label]),
+    const loaded = await loadTrack(
+      WAV,
+      { api, decode: async () => "audio" },
+      (share, label) => progress.push([share, label]),
+      LIVE,
     );
     expect(loaded).toEqual({ info: INFO, timeline: TIMELINE, audio: "audio" });
     expect(api.uploads).toEqual(["kicks.wav"]);
@@ -82,7 +90,7 @@ describe("loading a track", () => {
     const failed = new ApiError("analysis_failed", "silence");
     const api = new FakeApi([{ kind: "failed", error: failed }]);
     expect(
-      await rejection(loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined)),
+      await rejection(loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, LIVE)),
     ).toBe(failed);
   });
 
@@ -91,7 +99,7 @@ describe("loading a track", () => {
       throw new DOMException("unable to decode", "EncodingError");
     };
     const error = await rejection(
-      loadTrack(WAV, { api: new FakeApi(READY), decode }, () => undefined),
+      loadTrack(WAV, { api: new FakeApi(READY), decode }, () => undefined, LIVE),
     );
     expect(error).toBeInstanceOf(AudioDecodeError);
   });
@@ -100,9 +108,37 @@ describe("loading a track", () => {
     const api = new FakeApi(READY);
     const text = new File(["hello"], "notes.txt", { type: "text/plain" });
     const error = await rejection(
-      loadTrack(text, { api, decode: async () => "audio" }, () => undefined),
+      loadTrack(text, { api, decode: async () => "audio" }, () => undefined, LIVE),
     );
     expect(error instanceof ApiError && error.code).toBe("unsupported_format");
+    expect(api.uploads).toEqual([]);
+  });
+
+  it("stops following the analysis once abandoned", async () => {
+    const api = new FakeApi([{ kind: "progress", stage: "tempo", progress: 0.2 }]);
+    const abandoned = new AbortController();
+    const loading = loadTrack(
+      WAV,
+      { api, decode: async () => "audio" },
+      (_share, label) => {
+        if (label === "ищу темп") {
+          abandoned.abort(new DOMException("left the screen", "AbortError"));
+        }
+      },
+      abandoned.signal,
+    );
+    const error = await rejection(loading);
+    expect(error instanceof DOMException && error.name).toBe("AbortError");
+    expect(api.following).toBe(0);
+  });
+
+  it("does not upload a file abandoned while reading it", async () => {
+    const api = new FakeApi(READY);
+    const abandoned = new AbortController();
+    abandoned.abort();
+    await rejection(
+      loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, abandoned.signal),
+    );
     expect(api.uploads).toEqual([]);
   });
 

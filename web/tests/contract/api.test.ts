@@ -128,6 +128,18 @@ describe("uploading", () => {
     expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("unavailable");
   });
 
+  it("lets an abandoned upload stop with the abandoning reason", async () => {
+    const abandoned = new AbortController();
+    const reason = new DOMException("left the screen", "AbortError");
+    const fetchFn: Fetch = async (_url, init) => {
+      expect(init?.signal).toBe(abandoned.signal);
+      abandoned.abort(reason);
+      throw reason;
+    };
+    const api = createApi(fetchFn, () => new FakeStream());
+    await expect(api.upload(new Blob(["x"]), "x.wav", abandoned.signal)).rejects.toBe(reason);
+  });
+
   it("reports a proxy page instead of an error body by its status", async () => {
     const gateway = () => new Response("<html>bad gateway</html>", { status: 503 });
     const api = createApi(answering(gateway).fetchFn, () => new FakeStream());

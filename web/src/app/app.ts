@@ -21,6 +21,7 @@ export function startApp(root: Document): void {
   let player: Player | null = null;
   let track: LoadedTrack<AudioBuffer> | null = null;
   let loading = false;
+  let pending: AbortController | null = null;
   let current: Route | null = null;
 
   const ensurePlayer = (): Player => {
@@ -71,12 +72,25 @@ export function startApp(root: Document): void {
     matchMedia("(prefers-reduced-motion: reduce)").matches,
     Math.random,
   );
+  const abandonLoad = () => {
+    pending?.abort(new DOMException("the load was abandoned", "AbortError"));
+    pending = null;
+    loading = false;
+  };
   const router = startRouter(
     () => ({ trackLoaded: track !== null, loading }),
-    (route) => dissolve(() => show(route)),
+    (route) => {
+      if (route !== "loading") {
+        abandonLoad();
+      }
+      dissolve(() => show(route));
+    },
   );
 
   async function open(file: File): Promise<void> {
+    abandonLoad();
+    const load = new AbortController();
+    pending = load;
     start.showError(null);
     const audio = ensurePlayer();
     loading = true;
@@ -87,7 +101,12 @@ export function startApp(root: Document): void {
         file,
         { api, decode: (data) => audio.decode(data) },
         (share, label) => loadingScreen.set(share, label),
+        load.signal,
       );
+      if (pending !== load) {
+        return;
+      }
+      pending = null;
       audio.play(loaded.audio);
       track = loaded;
       main.enter(loaded);
@@ -95,6 +114,10 @@ export function startApp(root: Document): void {
       loading = false;
       router.go("main", { replace: true });
     } catch (error) {
+      if (pending !== load) {
+        return;
+      }
+      pending = null;
       loading = false;
       router.go(track === null ? "start" : "main", { replace: true });
       start.showError(messageFor(error));

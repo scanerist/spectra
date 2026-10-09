@@ -31,17 +31,21 @@ export async function loadTrack<A>(
   file: File,
   deps: SessionDeps<A>,
   onProgress: ProgressListener,
+  signal: AbortSignal,
 ): Promise<LoadedTrack<A>> {
   if (!isAudioFile(file)) {
     throw new ApiError("unsupported_format", "the file is not audio");
   }
   onProgress(0, READING_LABEL);
   const data = await file.arrayBuffer();
+  signal.throwIfAborted();
   const decoded = settle(deps.decode(data.slice(0)));
-  const trackId = await deps.api.upload(file, file.name);
+  const trackId = await deps.api.upload(file, file.name, signal);
+  signal.throwIfAborted();
   onProgress(UPLOAD_SHARE, STAGE_LABELS.decoding);
-  const info = await analysed(deps.api, trackId, onProgress);
-  const [timeline, audio] = await Promise.all([deps.api.timeline(trackId), decoded]);
+  const info = await analysed(deps.api, trackId, onProgress, signal);
+  const [timeline, audio] = await Promise.all([deps.api.timeline(trackId, signal), decoded]);
+  signal.throwIfAborted();
   if (!audio.ok) {
     throw new AudioDecodeError(
       audio.error instanceof Error ? audio.error.message : "decoding failed",
@@ -51,21 +55,33 @@ export async function loadTrack<A>(
   return { info, timeline, audio: audio.value };
 }
 
-function analysed(api: Api, trackId: string, onProgress: ProgressListener): Promise<TrackInfo> {
+function analysed(
+  api: Api,
+  trackId: string,
+  onProgress: ProgressListener,
+  signal: AbortSignal,
+): Promise<TrackInfo> {
   return new Promise((resolve, reject) => {
-    api.follow(trackId, (event) => {
+    const abandon = () => {
+      unsubscribe();
+      reject(signal.reason);
+    };
+    const unsubscribe = api.follow(trackId, (event) => {
       switch (event.kind) {
         case "progress":
           onProgress(UPLOAD_SHARE + (1 - UPLOAD_SHARE) * event.progress, STAGE_LABELS[event.stage]);
           return;
         case "ready":
+          signal.removeEventListener("abort", abandon);
           resolve(event.info);
           return;
         case "failed":
+          signal.removeEventListener("abort", abandon);
           reject(event.error);
           return;
       }
     });
+    signal.addEventListener("abort", abandon, { once: true });
   });
 }
 

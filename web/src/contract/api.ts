@@ -67,9 +67,9 @@ export type OpenEventStream = (url: string) => EventStream;
 const CLOSED = 2;
 
 export interface Api {
-  upload(file: Blob, filename: string): Promise<string>;
+  upload(file: Blob, filename: string, signal?: AbortSignal): Promise<string>;
   track(trackId: string): Promise<TrackInfo>;
-  timeline(trackId: string): Promise<Timeline>;
+  timeline(trackId: string, signal?: AbortSignal): Promise<Timeline>;
   follow(trackId: string, onEvent: (event: TrackEvent) => void): () => void;
 }
 
@@ -82,18 +82,24 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
     return response;
   };
   return {
-    async upload(file, filename) {
+    async upload(file, filename, signal) {
       const form = new FormData();
       form.append("file", file, filename);
-      const response = await request("/tracks", { method: "POST", body: form });
+      const response = await request("/tracks", {
+        method: "POST",
+        body: form,
+        signal: signal ?? null,
+      });
       return field(await response.json(), "track_id", isString);
     },
     async track(trackId) {
       const response = await request(`/tracks/${encodeURIComponent(trackId)}`);
       return trackInfo(await response.json());
     },
-    async timeline(trackId) {
-      const response = await request(`/tracks/${encodeURIComponent(trackId)}/timeline`);
+    async timeline(trackId, signal) {
+      const response = await request(`/tracks/${encodeURIComponent(trackId)}/timeline`, {
+        signal: signal ?? null,
+      });
       return decodeTimeline(await response.arrayBuffer());
     },
     follow(trackId, onEvent) {
@@ -154,6 +160,9 @@ async function reach(fetchFn: Fetch, path: string, init?: RequestInit): Promise<
   try {
     return await fetchFn(path, init);
   } catch (error) {
+    if (init?.signal?.aborted === true) {
+      throw init.signal.reason;
+    }
     throw new ApiError(
       "unavailable",
       error instanceof Error ? error.message : "the engine is unreachable",

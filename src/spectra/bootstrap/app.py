@@ -1,19 +1,46 @@
+import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Final
 
 import uvicorn
 from fastapi import FastAPI
 
+from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.settings import LogLevel, Settings
-from spectra.gateway.routes import create_router
+from spectra.gateway.errors import install_error_handlers
+from spectra.gateway.routes import create_router, install_track_service
+from spectra.tracks.application.registry import TrackRegistry
+from spectra.tracks.application.service import TrackService
+from spectra.tracks.application.worker import AnalysisWorker
 
 LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
 def create_app(settings: Settings) -> FastAPI:
     configure_logging(settings.log_level)
-    app = FastAPI(title="spectra engine")
+    decoder = SoundfileDecoder()
+    registry = TrackRegistry(capacity=settings.max_tracks)
+    worker = AnalysisWorker(decoder=decoder, registry=registry)
+    service = TrackService(
+        decoder=decoder,
+        registry=registry,
+        jobs=worker,
+        max_upload_bytes=settings.max_upload_bytes,
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        async with asyncio.TaskGroup() as group:
+            group.create_task(worker.run())
+            yield
+            worker.close()
+
+    app = FastAPI(title="spectra engine", lifespan=lifespan)
     app.include_router(create_router())
+    install_error_handlers(app)
+    install_track_service(app, service)
     return app
 
 

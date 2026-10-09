@@ -1,9 +1,27 @@
-from typing import Literal
+from typing import Annotated, Final, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, FastAPI, File, Request, Response, UploadFile, status
+from fastapi.requests import HTTPConnection
 from pydantic import BaseModel, ConfigDict
 
+from spectra.analysis.domain.track_analysis import TrackAnalysis
+from spectra.gateway.errors import (
+    FAILURE_CODES,
+    ApiError,
+    ErrorCode,
+    GatewayNotConfiguredError,
+)
 from spectra.gateway.protocol import PROTOCOL_VERSION
+from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
+from spectra.gateway.timeline_codec import encode_timeline
+from spectra.tracks.application.service import TrackService
+from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
+from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId
+
+TRACK_SERVICE_STATE: Final = "track_service"
+UPLOAD_CHUNK_BYTES: Final = 1 << 20
+MULTIPART_OVERHEAD_BYTES: Final = 64 << 10
+TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 
 
 class HealthReport(BaseModel):
@@ -13,11 +31,71 @@ class HealthReport(BaseModel):
     protocol: int = PROTOCOL_VERSION
 
 
+def install_track_service(app: FastAPI, service: TrackService) -> None:
+    setattr(app.state, TRACK_SERVICE_STATE, service)
+
+
+def track_service(connection: HTTPConnection) -> TrackService:
+    service = getattr(connection.app.state, TRACK_SERVICE_STATE, None)
+    if not isinstance(service, TrackService):
+        raise GatewayNotConfiguredError("the track service is not installed on the app")
+    return service
+
+
+type Service = Annotated[TrackService, Depends(track_service)]
+
+
+async def read_upload(request: Request, upload: UploadFile | None, *, limit: int) -> bytes:
+    declared = int(request.headers.get("content-length", "0") or 0)
+    if declared > limit + MULTIPART_OVERHEAD_BYTES:
+        raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+    if upload is None:
+        raise EmptyUploadError("the request has no file part")
+    chunks: list[bytes] = []
+    received = 0
+    while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+        received += len(chunk)
+        if received > limit:
+            raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def ready_analysis(service: TrackService, track_id: str) -> tuple[TrackId, TrackAnalysis]:
+    track = TrackId(track_id)
+    match service.status(track):
+        case Ready(analysis=analysis):
+            return track, analysis
+        case Analysing():
+            raise ApiError(ErrorCode.NOT_READY, "the analysis of this track is still running")
+        case Failed(code=code, message=message):
+            raise ApiError(FAILURE_CODES[code], message)
+
+
 def create_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/health")
     async def health() -> HealthReport:
         return HealthReport()
+
+    @router.post("/tracks", status_code=status.HTTP_202_ACCEPTED)
+    async def upload_track(
+        request: Request,
+        service: Service,
+        file: Annotated[UploadFile | None, File()] = None,
+    ) -> TrackCreated:
+        data = await read_upload(request, file, limit=service.max_upload_bytes)
+        return TrackCreated(track_id=service.submit(data).value)
+
+    @router.get("/tracks/{track_id}")
+    async def get_track(track_id: str, service: Service) -> TrackInfo:
+        track, analysis = ready_analysis(service, track_id)
+        return track_info(track, analysis)
+
+    @router.get("/tracks/{track_id}/timeline")
+    async def get_timeline(track_id: str, service: Service) -> Response:
+        _, analysis = ready_analysis(service, track_id)
+        return Response(content=encode_timeline(analysis), media_type=TIMELINE_MEDIA_TYPE)
 
     return router

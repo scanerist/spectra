@@ -12,15 +12,20 @@ def test_settings_defaults() -> None:
     settings = Settings()
     assert (settings.host, settings.port) == ("127.0.0.1", 8000)
     assert settings.log_level is LogLevel.INFO
+    assert settings.max_upload_bytes == 256 * 1024 * 1024
+    assert settings.max_tracks == 8
 
 
 def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPECTRA_HOST", "192.168.1.20")
     monkeypatch.setenv("SPECTRA_PORT", "9001")
     monkeypatch.setenv("SPECTRA_LOG_LEVEL", "debug")
+    monkeypatch.setenv("SPECTRA_MAX_UPLOAD_BYTES", "1000")
+    monkeypatch.setenv("SPECTRA_MAX_TRACKS", "2")
     settings = Settings()
     assert (settings.host, settings.port) == ("192.168.1.20", 9001)
     assert settings.log_level is LogLevel.DEBUG
+    assert (settings.max_upload_bytes, settings.max_tracks) == (1000, 2)
 
 
 @pytest.mark.parametrize(
@@ -29,8 +34,10 @@ def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -
         ("SPECTRA_PORT", "0"),
         ("SPECTRA_PORT", "70000"),
         ("SPECTRA_LOG_LEVEL", "chatty"),
+        ("SPECTRA_MAX_UPLOAD_BYTES", "0"),
+        ("SPECTRA_MAX_TRACKS", "0"),
     ],
-    ids=["port-zero", "port-too-high", "log-level-unknown"],
+    ids=["port-zero", "port-too-high", "log-level-unknown", "no-upload", "no-tracks"],
 )
 def test_settings_reject_invalid_values(
     monkeypatch: pytest.MonkeyPatch, variable: str, value: str

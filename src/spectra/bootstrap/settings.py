@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65_535)
     log_level: LogLevel = LogLevel.INFO
+    max_upload_bytes: int = Field(default=256 * 1024 * 1024, ge=1)
+    max_tracks: int = Field(default=8, ge=1)
 
     @field_validator("log_level", mode="before")
     @classmethod

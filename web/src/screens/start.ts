@@ -41,6 +41,9 @@ export function mountStart(
       drop.classList.add("over");
     });
   }
+  for (const type of ["dragover", "drop"]) {
+    root.addEventListener(type, (event) => event.preventDefault());
+  }
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", (event) => {
     event.preventDefault();

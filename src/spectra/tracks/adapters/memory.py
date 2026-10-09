@@ -3,6 +3,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.domain.track import TrackId, TrackStatus, is_final
 
 
@@ -70,3 +71,26 @@ class InMemoryBlobStore:
 
     async def delete(self, key: str) -> None:
         self._blobs.pop(key, None)
+
+
+class InMemoryJobQueue:
+    def __init__(self) -> None:
+        self._jobs: asyncio.Queue[AnalysisJob | None] = asyncio.Queue()
+
+    async def enqueue(self, job: AnalysisJob) -> None:
+        self._jobs.put_nowait(job)
+
+    async def take(self) -> AnalysisJob | None:
+        return await self._jobs.get()
+
+    async def done(self, job: AnalysisJob) -> None:
+        pass
+
+    async def close(self) -> list[AnalysisJob]:
+        pending: list[AnalysisJob] = []
+        while not self._jobs.empty():
+            job = self._jobs.get_nowait()
+            if job is not None:
+                pending.append(job)
+        self._jobs.put_nowait(None)
+        return pending

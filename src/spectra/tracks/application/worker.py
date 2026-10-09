@@ -9,7 +9,7 @@ from spectra.analysis.domain.errors import (
     UnsupportedFormatError,
 )
 from spectra.analysis.domain.track_analysis import AnalysisStage, StageListener, analyse_signal
-from spectra.tracks.application.ports import AnalysisJob, BlobStore
+from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.blobs import upload_key
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackStatus
@@ -25,26 +25,23 @@ type StageQueue = asyncio.Queue[AnalysisStage | None]
 
 
 class AnalysisWorker:
-    def __init__(self, *, decoder: AudioDecoder, board: StatusBoard, blobs: BlobStore) -> None:
+    def __init__(
+        self, *, decoder: AudioDecoder, board: StatusBoard, blobs: BlobStore, jobs: JobQueue
+    ) -> None:
         self._decoder = decoder
         self._board = board
         self._blobs = blobs
-        self._jobs: asyncio.Queue[AnalysisJob | None] = asyncio.Queue()
-
-    def enqueue(self, job: AnalysisJob) -> None:
-        self._jobs.put_nowait(job)
+        self._jobs = jobs
 
     async def close(self) -> None:
-        while not self._jobs.empty():
-            job = self._jobs.get_nowait()
-            if job is not None:
-                await self._blobs.delete(upload_key(job.track_id))
-                await self._board.record(job.track_id, SHUT_DOWN)
-        self._jobs.put_nowait(None)
+        for job in await self._jobs.close():
+            await self._blobs.delete(upload_key(job.track_id))
+            await self._board.record(job.track_id, SHUT_DOWN)
 
     async def run(self) -> None:
-        while (job := await self._jobs.get()) is not None:
+        while (job := await self._jobs.take()) is not None:
             await self._board.record(job.track_id, await self._process(job))
+            await self._jobs.done(job)
 
     async def _process(self, job: AnalysisJob) -> TrackStatus:
         key = upload_key(job.track_id)

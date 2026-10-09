@@ -4,7 +4,7 @@ import pytest
 
 from spectra.analysis.domain.errors import UndecodableAudioError
 from spectra.analysis.domain.track_analysis import AnalysisStage
-from spectra.tracks.adapters.memory import InMemoryBlobStore
+from spectra.tracks.adapters.memory import InMemoryBlobStore, InMemoryJobQueue
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.worker import UPLOAD_GONE, AnalysisWorker
 from spectra.tracks.domain.blobs import upload_key
@@ -27,7 +27,8 @@ async def statuses_of(
 ) -> list[TrackStatus]:
     board = memory_board()
     store = blobs or InMemoryBlobStore()
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=store)
+    jobs = InMemoryJobQueue()
+    worker = AnalysisWorker(decoder=decoder, board=board, blobs=store, jobs=jobs)
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     if blobs is None:
         await store.put(upload_key(TRACK), b"track")
@@ -40,7 +41,7 @@ async def statuses_of(
     async with asyncio.TaskGroup() as group:
         group.create_task(follow())
         group.create_task(worker.run())
-        worker.enqueue(AnalysisJob(track_id=TRACK))
+        await jobs.enqueue(AnalysisJob(track_id=TRACK))
     return seen
 
 
@@ -71,12 +72,13 @@ async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
     board = memory_board()
     blobs = InMemoryBlobStore()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs)
+    jobs = InMemoryJobQueue()
+    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs, jobs=jobs)
     queued = [TrackId.of_content(name) for name in (b"one", b"two")]
     for track in queued:
         await board.record(track, Analysing.at(AnalysisStage.DECODING))
         await blobs.put(upload_key(track), track.value.encode())
-        worker.enqueue(AnalysisJob(track_id=track))
+        await jobs.enqueue(AnalysisJob(track_id=track))
     await worker.close()
     await worker.run()
     assert decoder.decoded == []

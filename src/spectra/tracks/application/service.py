@@ -58,7 +58,7 @@ class TrackService:
             raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
         await self._blobs.put(upload_key(track_id), data)
         await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
-        self._jobs.enqueue(AnalysisJob(track_id=track_id))
+        await self._jobs.enqueue(AnalysisJob(track_id=track_id))
         return track_id
 
     def _inspect(self, data: bytes) -> TrackId:

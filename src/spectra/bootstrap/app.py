@@ -14,6 +14,7 @@ from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.adapters.memory import (
     InMemoryBlobStore,
+    InMemoryJobQueue,
     InMemoryProgressFeed,
     InMemoryTrackStore,
 )
@@ -31,12 +32,13 @@ def create_app(settings: Settings) -> FastAPI:
         store=InMemoryTrackStore(capacity=settings.max_tracks), feed=InMemoryProgressFeed()
     )
     blobs = InMemoryBlobStore()
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs)
+    jobs = InMemoryJobQueue()
+    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs, jobs=jobs)
     service = TrackService(
         decoder=decoder,
         board=board,
         blobs=blobs,
-        jobs=worker,
+        jobs=jobs,
         limits=UploadLimits(
             max_upload_bytes=settings.max_upload_bytes,
             max_duration_s=settings.max_duration_s,

@@ -1,7 +1,13 @@
 import pytest
 
 from spectra.analysis.domain.track_analysis import AnalysisStage
-from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
+from spectra.tracks.adapters.memory import (
+    InMemoryBlobStore,
+    InMemoryJobQueue,
+    InMemoryProgressFeed,
+    InMemoryTrackStore,
+)
+from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, TrackId
 
 
@@ -63,3 +69,30 @@ async def test_feed_forgets_subscribers_that_left() -> None:
     async with feed.subscribe(track("a")) as updates:
         await feed.publish(track("a"), failed("later"))
         assert await anext(updates) == failed("later")
+
+
+@pytest.mark.anyio
+async def test_job_queue_hands_out_jobs_in_order() -> None:
+    queue = InMemoryJobQueue()
+    await queue.enqueue(AnalysisJob(track_id=track("a")))
+    await queue.enqueue(AnalysisJob(track_id=track("b")))
+    assert await queue.take() == AnalysisJob(track_id=track("a"))
+    assert await queue.take() == AnalysisJob(track_id=track("b"))
+
+
+@pytest.mark.anyio
+async def test_closing_the_job_queue_returns_pending_jobs_and_ends_take() -> None:
+    queue = InMemoryJobQueue()
+    await queue.enqueue(AnalysisJob(track_id=track("a")))
+    assert await queue.close() == [AnalysisJob(track_id=track("a"))]
+    assert await queue.take() is None
+
+
+@pytest.mark.anyio
+async def test_blob_store_puts_gets_and_deletes() -> None:
+    blobs = InMemoryBlobStore()
+    await blobs.put("uploads/a", b"bytes")
+    assert await blobs.get("uploads/a") == b"bytes"
+    await blobs.delete("uploads/a")
+    await blobs.delete("uploads/a")
+    assert await blobs.get("uploads/a") is None

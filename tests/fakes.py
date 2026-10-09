@@ -61,9 +61,19 @@ class FakeDecoder:
 class FakeJobQueue:
     def __init__(self) -> None:
         self.jobs: list[AnalysisJob] = []
+        self.finished: list[AnalysisJob] = []
 
-    def enqueue(self, job: AnalysisJob) -> None:
+    async def enqueue(self, job: AnalysisJob) -> None:
         self.jobs.append(job)
+
+    async def take(self) -> AnalysisJob | None:
+        return self.jobs.pop(0) if self.jobs else None
+
+    async def done(self, job: AnalysisJob) -> None:
+        self.finished.append(job)
+
+    async def close(self) -> list[AnalysisJob]:
+        return []
 
 
 def memory_board(*, capacity: int = 8) -> StatusBoard:

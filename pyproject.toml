@@ -7,6 +7,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "boto3>=1.43.110",
     "fastapi>=0.143.0",
     "numpy>=2.5.3",
     "pydantic>=2.14.0",
@@ -31,9 +32,11 @@ dev = [
     "httpx>=0.28.1",
     "hypothesis>=6.168.5",
     "import-linter>=2.15",
+    "moto>=5.2.3",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
+    "types-boto3[s3]>=1.43.110",
 ]
 
 [tool.ruff]
@@ -49,7 +52,7 @@ select = ["ALL"]
 ignore = ["D", "COM812", "CPY001", "TRY003", "EM101", "EM102", "TC001", "TC002", "TC003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "PLR2004", "INP001", "SLF001"]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "INP001", "SLF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["spectra", "tests"]
@@ -128,3 +131,14 @@ name = "Tracks application does not know concrete adapters"
 type = "forbidden"
 source_modules = ["spectra.tracks.application", "spectra.tracks.domain"]
 forbidden_modules = ["spectra.analysis.adapters", "spectra.tracks.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "Infrastructure clients stay in adapters"
+type = "forbidden"
+source_modules = [
+    "spectra.analysis",
+    "spectra.gateway",
+    "spectra.tracks.application",
+    "spectra.tracks.domain",
+]
+forbidden_modules = ["boto3", "botocore"]

@@ -23,7 +23,13 @@ from spectra.tracks.domain.track import (
     TrackId,
     TrackStatus,
 )
-from tests.fakes import FakeDecoder, FakeJobQueue, fake_timeline, memory_board
+from tests.fakes import (
+    FakeDecoder,
+    FakeJobQueue,
+    RecordingObserver,
+    fake_timeline,
+    memory_board,
+)
 from tests.signals import kick_train, signal_of, silence
 from tests.statuses import READY
 
@@ -41,6 +47,7 @@ async def statuses_of(
         board=board,
         blobs=store,
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     if blobs is None:
@@ -91,6 +98,7 @@ async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
         board=board,
         blobs=blobs,
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     queued = [TrackId.of_content(name) for name in (b"one", b"two")]
     for track in queued:
@@ -155,6 +163,7 @@ async def test_evicted_tracks_lose_their_timelines() -> None:
         board=board,
         blobs=blobs,
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     first, second = TrackId.of_content(b"first"), TrackId.of_content(b"second")
     for track in (first, second):
@@ -186,6 +195,7 @@ async def test_a_redelivered_job_for_a_settled_track_changes_nothing() -> None:
         board=board,
         blobs=InMemoryBlobStore(),
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     await board.record(TRACK, READY)
     await jobs.enqueue(AnalysisJob(track_id=TRACK))
@@ -205,6 +215,7 @@ async def test_a_job_for_a_forgotten_track_drops_its_upload() -> None:
         board=memory_board(),
         blobs=blobs,
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     await blobs.put(upload_key(TRACK), b"track")
     await jobs.enqueue(AnalysisJob(track_id=TRACK))
@@ -241,6 +252,7 @@ async def test_a_job_interrupted_by_a_storage_error_can_be_retried() -> None:
             board=board,
             blobs=blobs,
             jobs=jobs,
+            observer=RecordingObserver(),
         )
         with contextlib.suppress(OSError):
             await worker.run()
@@ -259,6 +271,7 @@ async def test_a_job_that_keeps_stopping_the_worker_fails_the_track() -> None:
         board=board,
         blobs=blobs,
         jobs=jobs,
+        observer=RecordingObserver(),
     )
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     await blobs.put(upload_key(TRACK), b"track")
@@ -269,3 +282,26 @@ async def test_a_job_that_keeps_stopping_the_worker_fails_the_track() -> None:
     assert await board.current(TRACK) == KEEPS_CRASHING
     assert await blobs.get(upload_key(TRACK)) is None
     assert jobs.finished == [job]
+
+
+@pytest.mark.anyio
+async def test_the_observer_sees_each_analysis_start_and_settle() -> None:
+    board = memory_board()
+    blobs = InMemoryBlobStore()
+    jobs = FakeJobQueue()
+    observer = RecordingObserver()
+    decoder = FakeDecoder(decode_error=UndecodableAudioError("lost sync"))
+    worker = AnalysisWorker(
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=blobs,
+        jobs=jobs,
+        observer=observer,
+    )
+    await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
+    await blobs.put(upload_key(TRACK), b"track")
+    await jobs.enqueue(AnalysisJob(track_id=TRACK))
+    await jobs.enqueue(AnalysisJob(track_id=TRACK))
+    await worker.run()
+    undecodable = Failed(code=FailureCode.UNDECODABLE, message="lost sync")
+    assert observer.events == [("started", TRACK, None), ("finished", TRACK, undecodable)]

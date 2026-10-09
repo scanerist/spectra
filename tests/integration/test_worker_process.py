@@ -1,4 +1,6 @@
 import asyncio
+import socket
+import urllib.request
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -30,6 +32,19 @@ async def hosted() -> AsyncIterator[HostedSettings]:
     await migrate(settings)
     yield settings
     await wipe_services(settings)
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
+def scrape(port: int) -> str:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5) as response:
+        body: bytes = response.read()
+    return body.decode()
 
 
 async def eventually(check: Callable[[], Awaitable[bool]]) -> None:
@@ -66,7 +81,8 @@ async def test_a_worker_removes_tracks_past_retention(hosted: HostedSettings) ->
     async with open_hosted(hosted, consumer="test") as adapters:
         await adapters.store.save(track("old"), READY)
         await adapters.blobs.put(timeline_key(track("old")), b"timeline")
-        settings = Settings(retention_days=1e-6, sweep_interval_s=POLL_S)
+        metrics_port = free_port()
+        settings = Settings(retention_days=1e-6, sweep_interval_s=POLL_S, metrics_port=metrics_port)
         stop = asyncio.Event()
 
         async def is_removed() -> bool:
@@ -75,8 +91,10 @@ async def test_a_worker_removes_tracks_past_retention(hosted: HostedSettings) ->
         async with asyncio.TaskGroup() as group:
             group.create_task(serve(settings, hosted, stop=stop))
             await eventually(is_removed)
+            metrics = await asyncio.to_thread(scrape, metrics_port)
             stop.set()
         assert await adapters.store.find(track("old")) is None
+    assert "spectra_tracks_expired_total 1.0" in metrics
 
 
 async def test_a_stopped_worker_exits_promptly(hosted: HostedSettings) -> None:

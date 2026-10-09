@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     max_duration_s: float = Field(default=1_800.0, gt=0.0, allow_inf_nan=False)
     uploads_per_hour: int = Field(default=20, ge=1)
     forwarded_allow_ips: str = "127.0.0.1"
+    metrics_port: int | None = Field(default=None, ge=0, le=65_535)
     retention_days: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
     sweep_interval_s: float = Field(default=3_600.0, gt=0.0, allow_inf_nan=False)
 

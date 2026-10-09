@@ -130,3 +130,14 @@ class ExhaustedQuota:
     async def spend(self, client: str) -> QuotaDecision:
         self.clients.append(client)
         return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
+
+
+class RecordingObserver:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, TrackId, TrackStatus | None]] = []
+
+    def started(self, track_id: TrackId) -> None:
+        self.events.append(("started", track_id, None))
+
+    def finished(self, track_id: TrackId, outcome: TrackStatus) -> None:
+        self.events.append(("finished", track_id, outcome))

@@ -12,6 +12,7 @@ dependencies = [
     "boto3>=1.43.110",
     "fastapi>=0.143.0",
     "numpy>=2.5.3",
+    "prometheus-client>=0.26.0",
     "pydantic>=2.14.0",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
@@ -147,4 +148,17 @@ source_modules = [
     "spectra.tracks.application",
     "spectra.tracks.domain",
 ]
-forbidden_modules = ["alembic", "asyncpg", "boto3", "botocore", "redis", "sqlalchemy"]
+forbidden_modules = [
+    "alembic",
+    "asyncpg",
+    "boto3",
+    "botocore",
+    "redis",
+    "sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "Metrics stay at the edges"
+type = "forbidden"
+source_modules = ["spectra.analysis", "spectra.tracks.application", "spectra.tracks.domain"]
+forbidden_modules = ["prometheus_client"]

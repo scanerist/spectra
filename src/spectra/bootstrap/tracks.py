@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Final
 
+from prometheus_client import CollectorRegistry
+
 from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.hosted import HostedAdapters
 from spectra.bootstrap.settings import Settings
@@ -13,6 +15,7 @@ from spectra.tracks.adapters.memory import (
     InMemoryTrackStore,
     InMemoryUploadQuota,
 )
+from spectra.tracks.adapters.prometheus import PrometheusAnalysisObserver
 from spectra.tracks.adapters.redis_quota import RedisUploadQuota
 from spectra.tracks.application.pipeline import AnalysisPipeline
 from spectra.tracks.application.ports import BlobStore, JobQueue, UploadQuota
@@ -74,10 +77,11 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
     )
 
 
-def analysis_worker(parts: TrackParts) -> AnalysisWorker:
+def analysis_worker(parts: TrackParts, registry: CollectorRegistry) -> AnalysisWorker:
     return AnalysisWorker(
         pipeline=AnalysisPipeline(decoder=SoundfileDecoder(), encoder=encode_timeline),
         board=parts.board,
         blobs=parts.blobs,
         jobs=parts.jobs,
+        observer=PrometheusAnalysisObserver(registry=registry, clock=MonotonicClock()),
     )

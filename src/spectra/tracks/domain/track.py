@@ -85,3 +85,13 @@ type TrackStatus = Analysing | Ready | Failed
 
 def is_final(status: TrackStatus) -> bool:
     return not isinstance(status, Analysing)
+
+
+def outcome_name(status: TrackStatus) -> str:
+    match status:
+        case Analysing():
+            return "analysing"
+        case Ready():
+            return "ready"
+        case Failed(code=code):
+            return code.value

@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from prometheus_client import CollectorRegistry
 
 from spectra.bootstrap.hosted import consumer_name, open_hosted
 from spectra.bootstrap.logs import configure_logging, logging_config
+from spectra.bootstrap.metrics import serving_metrics
 from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
     analysis_worker,
@@ -28,14 +30,21 @@ from spectra.tracks.application.admission import UploadAdmission
 
 def create_app(settings: Settings, hosted: HostedSettings | None = None) -> FastAPI:
     configure_logging(settings.log_level, settings.log_format)
+    registry = CollectorRegistry()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        with serving_metrics(registry, port=settings.metrics_port):
+            async with serving_tracks(app):
+                yield
+
+    @asynccontextmanager
+    async def serving_tracks(app: FastAPI) -> AsyncIterator[None]:
         if hosted is None:
             parts = local_parts(settings)
             install_track_service(app, track_service(parts, settings))
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
-            worker = analysis_worker(parts)
+            worker = analysis_worker(parts, registry)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
                 yield

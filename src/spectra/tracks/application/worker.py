@@ -9,7 +9,7 @@ from spectra.analysis.domain.errors import (
 )
 from spectra.analysis.domain.track_analysis import AnalysisStage, StageListener
 from spectra.tracks.application.pipeline import AnalysisPipeline
-from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
+from spectra.tracks.application.ports import AnalysisJob, AnalysisObserver, BlobStore, JobQueue
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.track import (
@@ -21,6 +21,7 @@ from spectra.tracks.domain.track import (
     TrackStatus,
     TrackSummary,
     is_final,
+    outcome_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,10 @@ class AnalysisWorker:
         board: StatusBoard,
         blobs: BlobStore,
         jobs: JobQueue,
+        observer: AnalysisObserver,
     ) -> None:
         self._pipeline = pipeline
+        self._observer = observer
         self._board = board
         self._blobs = blobs
         self._jobs = jobs
@@ -60,8 +63,16 @@ class AnalysisWorker:
     async def run(self) -> None:
         while (job := await self._jobs.take()) is not None:
             if await self._is_pending(job.track_id):
+                self._observer.started(job.track_id)
                 outcome = KEEPS_CRASHING if job.attempt > MAX_ATTEMPTS else await self._process(job)
                 await self._board.record(job.track_id, outcome)
+                self._observer.finished(job.track_id, outcome)
+                logger.info(
+                    "track %s settled as %s",
+                    job.track_id.value,
+                    outcome_name(outcome),
+                    extra={"track_id": job.track_id.value, "outcome": outcome_name(outcome)},
+                )
                 await self._evict(keep=job.track_id)
             await self._blobs.delete(upload_key(job.track_id))
             await self._jobs.done(job)

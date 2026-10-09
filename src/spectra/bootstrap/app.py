@@ -21,6 +21,7 @@ from spectra.gateway.routes import (
     install_track_service,
     install_upload_admission,
 )
+from spectra.gateway.security_headers import install_security_headers
 from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.application.admission import UploadAdmission
 
@@ -60,6 +61,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
     app.include_router(create_router())
     install_error_handlers(app)
     install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)
+    install_security_headers(app)
     return app
 
 

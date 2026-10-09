@@ -1,6 +1,6 @@
 import { element } from "../app/dom";
 import { bpmText, clockText } from "../app/format";
-import type { LoadedTrack } from "../app/session";
+import type { AnalysedTrack } from "../app/session";
 import { beatAt, frameAt, sectionAt } from "../contract/lookup";
 import { bandsOf } from "../contract/timeline";
 import { pixelView } from "../pixel/canvas";
@@ -22,7 +22,7 @@ export interface Moment {
 }
 
 export interface MainScreen {
-  enter(track: LoadedTrack<AudioBuffer>): void;
+  enter(track: AnalysedTrack): void;
   draw(moment: Moment): void;
 }
 
@@ -42,7 +42,7 @@ export function mountMain(root: Document, controls: MainControls): MainScreen {
   const decomposition = pixelView(element(root, "#c-decomposition", HTMLCanvasElement), 2);
   const spectrum = pixelView(element(root, "#c-spectrum", HTMLCanvasElement), 2);
   const samples = new Float32Array(SIGNAL_SIZE);
-  let track: LoadedTrack<AudioBuffer> | null = null;
+  let track: AnalysedTrack | null = null;
   let spans: HTMLSpanElement[] = [];
 
   strip.addEventListener("click", (event) => {

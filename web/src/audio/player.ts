@@ -2,21 +2,60 @@ export const OUTPUT_GAIN = 0.8;
 export const ANALYSER_FFT_SIZE = 2048;
 export const ANALYSER_SMOOTHING = 0.55;
 
-export function loopTimeS(clockS: number, startedAtS: number, durationS: number): number {
-  if (durationS <= 0) {
-    return 0;
-  }
-  const elapsedS = clockS - startedAtS;
-  return ((elapsedS % durationS) + durationS) % durationS;
+const SEEK_MARGIN_S = 0.01;
+const HAVE_CURRENT_DATA = 2;
+const INTERRUPTIONS: readonly string[] = ["NotAllowedError", "AbortError"];
+
+export interface Media extends EventTarget {
+  readonly readyState: number;
+  readonly duration: number;
+}
+
+export interface PreparedAudio {
+  readonly element: HTMLAudioElement;
+  readonly url: string;
+}
+
+interface Playing {
+  readonly audio: PreparedAudio;
+  readonly source: MediaElementAudioSourceNode;
+}
+
+export function whenPlayable(media: Media): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      media.removeEventListener("loadeddata", ready);
+      media.removeEventListener("error", failed);
+    };
+    const ready = () => {
+      stop();
+      if (Number.isFinite(media.duration) && media.duration > 0) {
+        resolve();
+      } else {
+        reject(new Error("the browser reports no duration"));
+      }
+    };
+    const failed = () => {
+      stop();
+      reject(new Error("the browser cannot play this file"));
+    };
+    media.addEventListener("loadeddata", ready);
+    media.addEventListener("error", failed);
+    if (media.readyState >= HAVE_CURRENT_DATA) {
+      ready();
+    }
+  });
+}
+
+export function seekTargetS(timeS: number, durationS: number): number {
+  return Math.min(Math.max(timeS, 0), Math.max(0, durationS - SEEK_MARGIN_S));
 }
 
 export class Player {
   readonly #context: AudioContext;
   readonly #output: GainNode;
   readonly #analyser: AnalyserNode;
-  #buffer: AudioBuffer | null = null;
-  #source: AudioBufferSourceNode | null = null;
-  #startedAtS = 0;
+  #playing: Playing | null = null;
   #pausedByUser = false;
 
   constructor(context: AudioContext) {
@@ -31,15 +70,15 @@ export class Player {
   }
 
   get running(): boolean {
-    return this.#context.state === "running";
+    return (
+      this.#playing !== null &&
+      !this.#playing.audio.element.paused &&
+      this.#context.state === "running"
+    );
   }
 
   get pausedByUser(): boolean {
     return this.#pausedByUser;
-  }
-
-  get durationS(): number {
-    return this.#buffer?.duration ?? 0;
   }
 
   get sampleRateHz(): number {
@@ -52,64 +91,77 @@ export class Player {
     }
   }
 
-  decode(data: ArrayBuffer): Promise<AudioBuffer> {
-    return this.#context.decodeAudioData(data);
+  async prepare(file: File): Promise<PreparedAudio> {
+    const element = new Audio();
+    const audio = { element, url: URL.createObjectURL(file) };
+    element.loop = true;
+    element.preload = "auto";
+    element.src = audio.url;
+    try {
+      await whenPlayable(element);
+    } catch (error) {
+      this.release(audio);
+      throw error;
+    }
+    return audio;
   }
 
-  play(buffer: AudioBuffer): void {
-    this.#buffer = buffer;
-    this.#pausedByUser = false;
-    this.seek(0);
+  release(audio: PreparedAudio): void {
+    audio.element.pause();
+    audio.element.removeAttribute("src");
+    audio.element.load();
+    URL.revokeObjectURL(audio.url);
+  }
+
+  play(audio: PreparedAudio): void {
+    if (this.#playing !== null) {
+      this.#playing.source.disconnect();
+      this.release(this.#playing.audio);
+    }
+    const source = this.#context.createMediaElementSource(audio.element);
+    source.connect(this.#output);
+    this.#playing = { audio, source };
+    audio.element.currentTime = 0;
+    void this.#resume();
   }
 
   timeS(): number {
-    return loopTimeS(this.#context.currentTime, this.#startedAtS, this.durationS);
+    return this.#playing?.audio.element.currentTime ?? 0;
   }
 
   seek(timeS: number): void {
-    if (this.#buffer === null) {
-      return;
+    if (this.#playing !== null) {
+      const { element } = this.#playing.audio;
+      element.currentTime = seekTargetS(timeS, element.duration);
     }
-    const offsetS = Math.min(Math.max(timeS, 0), Math.max(0, this.durationS - 0.01));
-    this.#stopSource();
-    const source = this.#context.createBufferSource();
-    source.buffer = this.#buffer;
-    source.loop = true;
-    source.connect(this.#output);
-    source.start(0, offsetS);
-    this.#source = source;
-    this.#startedAtS = this.#context.currentTime - offsetS;
   }
 
   async toggle(): Promise<void> {
     if (this.running) {
       this.#pausedByUser = true;
-      await this.#context.suspend();
+      this.#playing?.audio.element.pause();
     } else {
-      this.#pausedByUser = false;
-      await this.#context.resume();
+      await this.#resume();
     }
   }
 
   async resumeAfterBlock(): Promise<void> {
-    this.#pausedByUser = false;
-    await this.#context.resume();
-  }
-
-  stop(): void {
-    this.#stopSource();
-    this.#buffer = null;
+    await this.#resume();
   }
 
   waveform(samples: Float32Array<ArrayBuffer>): void {
     this.#analyser.getFloatTimeDomainData(samples);
   }
 
-  #stopSource(): void {
-    if (this.#source !== null) {
-      this.#source.stop();
-      this.#source.disconnect();
-      this.#source = null;
+  async #resume(): Promise<void> {
+    this.#pausedByUser = false;
+    try {
+      await this.#context.resume();
+      await this.#playing?.audio.element.play();
+    } catch (error) {
+      if (!(error instanceof DOMException && INTERRUPTIONS.includes(error.name))) {
+        throw error;
+      }
     }
   }
 }

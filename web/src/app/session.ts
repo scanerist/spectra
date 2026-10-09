@@ -4,23 +4,27 @@ import {
   AudioDecodeError,
   DONE_LABEL,
   ProtocolMismatchError,
-  READING_LABEL,
   STAGE_LABELS,
+  UPLOADING_LABEL,
 } from "./messages";
 
 export const UPLOAD_SHARE = 0.1;
 
 const AUDIO_EXTENSION = /\.(mp3|wav|flac|ogg|oga)$/i;
 
-export interface LoadedTrack<A> {
+export interface AnalysedTrack {
   readonly info: TrackInfo;
   readonly timeline: Timeline;
+}
+
+export interface LoadedTrack<A> extends AnalysedTrack {
   readonly audio: A;
 }
 
 export interface SessionDeps<A> {
   readonly api: Api;
-  readonly decode: (data: ArrayBuffer) => Promise<A>;
+  readonly prepare: (file: File) => Promise<A>;
+  readonly release: (audio: A) => void;
 }
 
 export type ProgressListener = (progress: number, label: string) => void;
@@ -42,27 +46,35 @@ export async function loadTrack<A>(
   if (!isAudioFile(file)) {
     throw new ApiError("unsupported_format", "the file is not audio");
   }
-  onProgress(0, READING_LABEL);
+  onProgress(0, UPLOADING_LABEL);
   const protocol = await deps.api.protocol(signal);
   if (protocol !== PROTOCOL_VERSION) {
     throw new ProtocolMismatchError(`the engine speaks protocol ${protocol}`);
   }
-  const data = await file.arrayBuffer();
   signal.throwIfAborted();
-  const decoded = settle(deps.decode(data.slice(0)));
-  const trackId = await deps.api.upload(file, file.name, signal);
-  signal.throwIfAborted();
-  onProgress(UPLOAD_SHARE, STAGE_LABELS.decoding);
-  const info = await analysed(deps.api, trackId, onProgress, signal);
-  const [timeline, audio] = await Promise.all([deps.api.timeline(trackId, signal), decoded]);
-  signal.throwIfAborted();
-  if (!audio.ok) {
-    throw new AudioDecodeError(
-      audio.error instanceof Error ? audio.error.message : "decoding failed",
-    );
+  const prepared = settle(deps.prepare(file));
+  try {
+    const trackId = await deps.api.upload(file, file.name, signal);
+    signal.throwIfAborted();
+    onProgress(UPLOAD_SHARE, STAGE_LABELS.decoding);
+    const info = await analysed(deps.api, trackId, onProgress, signal);
+    const [timeline, audio] = await Promise.all([deps.api.timeline(trackId, signal), prepared]);
+    signal.throwIfAborted();
+    if (!audio.ok) {
+      throw new AudioDecodeError(
+        audio.error instanceof Error ? audio.error.message : "the browser cannot play the file",
+      );
+    }
+    onProgress(1, DONE_LABEL);
+    return { info, timeline, audio: audio.value };
+  } catch (error) {
+    void prepared.then((outcome) => {
+      if (outcome.ok) {
+        deps.release(outcome.value);
+      }
+    });
+    throw error;
   }
-  onProgress(1, DONE_LABEL);
-  return { info, timeline, audio: audio.value };
 }
 
 function analysed(

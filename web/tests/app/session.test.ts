@@ -56,6 +56,19 @@ class FakeApi implements Api {
 }
 
 const LIVE = new AbortController().signal;
+
+function deps(
+  api: Api,
+  prepare: () => Promise<string> = async () => "audio",
+): {
+  api: Api;
+  prepare: () => Promise<string>;
+  release: (audio: string) => void;
+  released: string[];
+} {
+  const released: string[] = [];
+  return { api, prepare, release: (audio) => released.push(audio), released };
+}
 const WAV = new File(["RIFF"], "kicks.wav", { type: "audio/wav" });
 const READY: TrackEvent[] = [
   { kind: "progress", stage: "tempo", progress: 0.55 },
@@ -77,14 +90,14 @@ describe("loading a track", () => {
     const progress: [number, string][] = [];
     const loaded = await loadTrack(
       WAV,
-      { api, decode: async () => "audio" },
+      deps(api),
       (share, label) => progress.push([share, label]),
       LIVE,
     );
     expect(loaded).toEqual({ info: INFO, timeline: TIMELINE, audio: "audio" });
     expect(api.uploads).toEqual(["kicks.wav"]);
     expect(progress).toEqual([
-      [0, "читаю файл"],
+      [0, "загружаю"],
       [UPLOAD_SHARE, "декодирую"],
       [UPLOAD_SHARE + (1 - UPLOAD_SHARE) * 0.55, "ищу темп"],
       [1, "готово"],
@@ -94,17 +107,18 @@ describe("loading a track", () => {
   it("stops with the engine's failure", async () => {
     const failed = new ApiError("analysis_failed", "silence");
     const api = new FakeApi([{ kind: "failed", error: failed }]);
-    expect(
-      await rejection(loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, LIVE)),
-    ).toBe(failed);
+    const session = deps(api);
+    expect(await rejection(loadTrack(WAV, session, () => undefined, LIVE))).toBe(failed);
+    await Promise.resolve();
+    expect(session.released).toEqual(["audio"]);
   });
 
-  it("stops when the browser cannot decode the file for playback", async () => {
-    const decode = async (): Promise<string> => {
-      throw new DOMException("unable to decode", "EncodingError");
+  it("stops when the browser cannot play the file", async () => {
+    const unplayable = async (): Promise<string> => {
+      throw new Error("the browser cannot play this file");
     };
     const error = await rejection(
-      loadTrack(WAV, { api: new FakeApi(READY), decode }, () => undefined, LIVE),
+      loadTrack(WAV, deps(new FakeApi(READY), unplayable), () => undefined, LIVE),
     );
     expect(error).toBeInstanceOf(AudioDecodeError);
   });
@@ -112,9 +126,7 @@ describe("loading a track", () => {
   it("refuses a file that is not audio before uploading it", async () => {
     const api = new FakeApi(READY);
     const text = new File(["hello"], "notes.txt", { type: "text/plain" });
-    const error = await rejection(
-      loadTrack(text, { api, decode: async () => "audio" }, () => undefined, LIVE),
-    );
+    const error = await rejection(loadTrack(text, deps(api), () => undefined, LIVE));
     expect(error instanceof ApiError && error.code).toBe("unsupported_format");
     expect(api.uploads).toEqual([]);
   });
@@ -122,9 +134,10 @@ describe("loading a track", () => {
   it("stops following the analysis once abandoned", async () => {
     const api = new FakeApi([{ kind: "progress", stage: "tempo", progress: 0.2 }]);
     const abandoned = new AbortController();
+    const session = deps(api);
     const loading = loadTrack(
       WAV,
-      { api, decode: async () => "audio" },
+      session,
       (_share, label) => {
         if (label === "ищу темп") {
           abandoned.abort(new DOMException("left the screen", "AbortError"));
@@ -135,23 +148,27 @@ describe("loading a track", () => {
     const error = await rejection(loading);
     expect(error instanceof DOMException && error.name).toBe("AbortError");
     expect(api.following).toBe(0);
+    await Promise.resolve();
+    expect(session.released).toEqual(["audio"]);
   });
 
-  it("does not upload a file abandoned while reading it", async () => {
+  it("neither uploads nor prepares a load abandoned before it starts", async () => {
     const api = new FakeApi(READY);
     const abandoned = new AbortController();
     abandoned.abort();
-    await rejection(
-      loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, abandoned.signal),
-    );
+    let prepared = 0;
+    const counting = async (): Promise<string> => {
+      prepared += 1;
+      return "audio";
+    };
+    await rejection(loadTrack(WAV, deps(api, counting), () => undefined, abandoned.signal));
     expect(api.uploads).toEqual([]);
+    expect(prepared).toBe(0);
   });
 
   it("asks for a reload before uploading to an engine that speaks another protocol", async () => {
     const api = new FakeApi(READY, null, 2);
-    const error = await rejection(
-      loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, LIVE),
-    );
+    const error = await rejection(loadTrack(WAV, deps(api), () => undefined, LIVE));
     expect(error).toBeInstanceOf(ProtocolMismatchError);
     expect(messageFor(error)).toContain("обнови страницу");
     expect(api.uploads).toEqual([]);

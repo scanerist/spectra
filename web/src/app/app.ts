@@ -1,4 +1,4 @@
-import { Player } from "../audio/player";
+import { Player, type PreparedAudio } from "../audio/player";
 import { createApi } from "../contract/api";
 import { mountAnalysis } from "../screens/analysis";
 import { mountLoading } from "../screens/loading";
@@ -20,7 +20,7 @@ export function startApp(root: Document): void {
     (url) => new EventSource(url),
   );
   let player: Player | null = null;
-  let track: LoadedTrack<AudioBuffer> | null = null;
+  let track: LoadedTrack<PreparedAudio> | null = null;
   let loading = false;
   let pending: AbortController | null = null;
   let current: Route | null = null;
@@ -103,7 +103,11 @@ export function startApp(root: Document): void {
     try {
       const loaded = await loadTrack(
         file,
-        { api, decode: (data) => audio.decode(data) },
+        {
+          api,
+          prepare: (source) => audio.prepare(source),
+          release: (prepared) => audio.release(prepared),
+        },
         (share, label) => loadingScreen.set(share, label),
         load.signal,
       );

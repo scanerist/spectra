@@ -1,5 +1,5 @@
 import { element } from "../app/dom";
-import type { LoadedTrack } from "../app/session";
+import type { AnalysedTrack } from "../app/session";
 import { barAt, frameAt } from "../contract/lookup";
 import { pixelView } from "../pixel/canvas";
 import { bandHistory } from "../view/bands";
@@ -10,7 +10,7 @@ import { HISTORY_STEP_FRAMES, type Moment } from "./main";
 export const WIRE_ROWS = 22;
 
 export interface AnalysisScreen {
-  enter(track: LoadedTrack<AudioBuffer>): void;
+  enter(track: AnalysedTrack): void;
   draw(moment: Moment): void;
 }
 
@@ -23,7 +23,7 @@ export function mountAnalysis(
   const epicycles = pixelView(element(root, "#c-epicycles", HTMLCanvasElement), 2);
   const winding = pixelView(element(root, "#c-winding", HTMLCanvasElement), 2);
   const magnitude = pixelView(element(root, "#c-magnitude", HTMLCanvasElement), 2);
-  let track: LoadedTrack<AudioBuffer> | null = null;
+  let track: AnalysedTrack | null = null;
   let morph = new FourierMorph(random);
   let bar = -1;
   let snapshot: BarSnapshot | null = null;

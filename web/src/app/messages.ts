@@ -17,7 +17,7 @@ export const STAGE_LABELS: Readonly<Record<Stage, string>> = {
   structure: "ищу структуру",
 };
 
-export const READING_LABEL = "читаю файл";
+export const UPLOADING_LABEL = "загружаю";
 export const DONE_LABEL = "готово";
 
 export function messageFor(error: unknown): string {

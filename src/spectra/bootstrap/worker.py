@@ -12,8 +12,9 @@ from spectra.bootstrap.hosted import HostedAdapters, consumer_name, open_hosted
 from spectra.bootstrap.logs import configure_logging
 from spectra.bootstrap.metrics import process_registry, serving_metrics
 from spectra.bootstrap.settings import HostedSettings, Settings
-from spectra.bootstrap.tracks import analysis_worker, hosted_parts
+from spectra.bootstrap.tracks import analysis_observer, analysis_worker, hosted_parts
 from spectra.tracks.application.janitor import Janitor
+from spectra.tracks.application.ports import AnalysisObserver
 
 logger = logging.getLogger(__name__)
 
@@ -47,19 +48,25 @@ async def serve(settings: Settings, hosted: HostedSettings, *, stop: asyncio.Eve
     metrics = WorkerMetrics.on(registry)
     with serving_metrics(registry, port=settings.metrics_port):
         async with open_hosted(hosted, consumer=consumer_name()) as adapters:
-            await serve_on(adapters, settings, registry=registry, metrics=metrics, stop=stop)
+            await serve_on(
+                adapters,
+                settings,
+                observer=analysis_observer(registry),
+                metrics=metrics,
+                stop=stop,
+            )
 
 
 async def serve_on(
     adapters: HostedAdapters,
     settings: Settings,
     *,
-    registry: CollectorRegistry,
+    observer: AnalysisObserver,
     metrics: WorkerMetrics,
     stop: asyncio.Event,
 ) -> None:
     parts = hosted_parts(adapters, settings)
-    worker = analysis_worker(parts, registry)
+    worker = analysis_worker(parts, observer)
     janitor = Janitor(
         expiry=adapters.store,
         blobs=parts.blobs,

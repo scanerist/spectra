@@ -10,6 +10,7 @@ from spectra.bootstrap.logs import configure_logging, logging_config
 from spectra.bootstrap.metrics import process_registry, serving_metrics
 from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
+    analysis_observer,
     analysis_worker,
     hosted_parts,
     local_parts,
@@ -32,6 +33,7 @@ from spectra.tracks.application.admission import UploadAdmission
 def create_app(settings: Settings, hosted: HostedSettings | None = None) -> FastAPI:
     configure_logging(settings.log_level, settings.log_format)
     registry = process_registry()
+    observer = analysis_observer(registry)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -45,7 +47,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
             parts = local_parts(settings)
             install_track_service(app, track_service(parts, settings))
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
-            worker = analysis_worker(parts, registry)
+            worker = analysis_worker(parts, observer)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
                 yield

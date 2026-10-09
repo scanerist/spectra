@@ -172,3 +172,10 @@ def test_run_serves_the_app_with_configured_host_and_port(
     assert (served["host"], served["port"], served["log_level"]) == ("127.0.0.1", 9002, "info")
     assert (served["proxy_headers"], served["forwarded_allow_ips"]) == (True, "127.0.0.1")
     assert served["log_config"] == logging_config(LogLevel.INFO, LogFormat.TEXT)
+
+
+def test_a_local_app_can_start_twice() -> None:
+    app = bootstrap_app.create_app(Settings())
+    for _ in range(2):
+        with TestClient(app) as client:
+            assert client.get("/health").status_code == 200

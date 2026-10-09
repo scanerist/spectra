@@ -18,7 +18,7 @@ from spectra.tracks.adapters.memory import (
 from spectra.tracks.adapters.prometheus import PrometheusAnalysisObserver
 from spectra.tracks.adapters.redis_quota import RedisUploadQuota
 from spectra.tracks.application.pipeline import AnalysisPipeline
-from spectra.tracks.application.ports import BlobStore, JobQueue, UploadQuota
+from spectra.tracks.application.ports import AnalysisObserver, BlobStore, JobQueue, UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.application.worker import AnalysisWorker
@@ -77,11 +77,15 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
     )
 
 
-def analysis_worker(parts: TrackParts, registry: CollectorRegistry) -> AnalysisWorker:
+def analysis_observer(registry: CollectorRegistry) -> AnalysisObserver:
+    return PrometheusAnalysisObserver(registry=registry, clock=MonotonicClock())
+
+
+def analysis_worker(parts: TrackParts, observer: AnalysisObserver) -> AnalysisWorker:
     return AnalysisWorker(
         pipeline=AnalysisPipeline(decoder=SoundfileDecoder(), encoder=encode_timeline),
         board=parts.board,
         blobs=parts.blobs,
         jobs=parts.jobs,
-        observer=PrometheusAnalysisObserver(registry=registry, clock=MonotonicClock()),
+        observer=observer,
     )

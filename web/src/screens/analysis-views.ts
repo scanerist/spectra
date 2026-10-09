@@ -109,7 +109,7 @@ export function drawEpicycles(view: PixelView, epicycles: readonly Epicycle[]): 
       (_, step): Point => [traceX + step, centreY - radiusScale * level((step * spanS) / steps)],
     ),
   );
-  ink(target, ACC);
+  ink(target, INK);
   target.fillRect(Math.round(tip[0]) - 1, Math.round(tip[1]) - 1, 2, 2);
   target.globalAlpha = 1;
 }
@@ -186,7 +186,7 @@ export function createWindingView(sampleRateHz: number) {
     const [real, imaginary] = fourierAt(samples, freqHz, sampleRateHz);
     const centroidScale = (0.8 * (size / 2)) / ((ampSum * samples.length) / 4);
     const centroid: Point = [centreX + real * centroidScale, centreY - imaginary * centroidScale];
-    ink(target, ACC);
+    ink(target, INK);
     segment(target, [centreX, centreY], centroid);
     target.fillRect(Math.round(centroid[0]) - 1, Math.round(centroid[1]) - 1, 3, 3);
     target.globalAlpha = 1;
@@ -219,7 +219,7 @@ export function drawMagnitude(
     ink(target, ACC, Math.min(1, epicycle.amp * 1.5));
     target.fillRect(Math.round(x(binOf(epicycle.freqHz))), height - 2, 1, 2);
   }
-  ink(target, ACC);
+  ink(target, INK, 0.5);
   target.fillRect(Math.round(x(cursor)), 2, 1, height - 5);
   target.globalAlpha = 1;
 }

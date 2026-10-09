@@ -118,13 +118,13 @@ header .r {
 }
 
 :focus-visible {
-  outline: 1px solid var(--acc);
+  outline: 1px solid var(--ink);
   outline-offset: 2px;
 }
 
 .err {
   margin: 0;
-  color: var(--acc);
+  color: var(--ink);
   font-size: 16px;
 }
 
@@ -281,7 +281,7 @@ header .r {
 }
 
 .drop:focus-within {
-  outline: 1px solid var(--acc);
+  outline: 1px solid var(--ink);
   outline-offset: 2px;
 }
 

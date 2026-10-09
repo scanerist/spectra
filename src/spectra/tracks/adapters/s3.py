@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 MISSING_BUCKET_CODES: Final = frozenset({"404", "NoSuchBucket"})
 CONNECT_TIMEOUT_S: Final = 5.0
+READ_TIMEOUT_S: Final = 30.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -32,6 +33,7 @@ def s3_client(endpoint: S3Endpoint) -> S3Client:
             s3={"addressing_style": "path"},
             retries={"mode": "standard", "max_attempts": 3},
             connect_timeout=CONNECT_TIMEOUT_S,
+            read_timeout=READ_TIMEOUT_S,
         ),
     )
 

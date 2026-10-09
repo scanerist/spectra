@@ -6,14 +6,21 @@ from typing import Protocol
 from spectra.tracks.domain.track import TrackId, TrackStatus
 
 
-@dataclass(frozen=True, slots=True, kw_only=True, eq=False)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class AnalysisJob:
     track_id: TrackId
-    data: bytes
 
 
 class JobQueue(Protocol):
     def enqueue(self, job: AnalysisJob) -> None: ...
+
+
+class BlobStore(Protocol):
+    async def put(self, key: str, data: bytes) -> None: ...
+
+    async def get(self, key: str) -> bytes | None: ...
+
+    async def delete(self, key: str) -> None: ...
 
 
 class TrackStore(Protocol):

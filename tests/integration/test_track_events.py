@@ -6,6 +6,7 @@ from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.events import status_event
 from spectra.gateway.routes import create_router, install_track_service
+from spectra.tracks.adapters.memory import InMemoryBlobStore
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
@@ -26,6 +27,7 @@ def client(board: StatusBoard) -> TestClient:
     service = TrackService(
         decoder=FakeDecoder(),
         board=board,
+        blobs=InMemoryBlobStore(),
         jobs=FakeJobQueue(),
         limits=UploadLimits(max_upload_bytes=100, max_duration_s=600.0, max_pending=4),
     )

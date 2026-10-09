@@ -4,8 +4,9 @@ from dataclasses import dataclass
 
 from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.track_analysis import AnalysisStage
-from spectra.tracks.application.ports import AnalysisJob, JobQueue
+from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
 from spectra.tracks.application.status_board import StatusBoard
+from spectra.tracks.domain.blobs import upload_key
 from spectra.tracks.domain.errors import (
     AnalysisQueueFullError,
     EmptyUploadError,
@@ -28,11 +29,13 @@ class TrackService:
         *,
         decoder: AudioDecoder,
         board: StatusBoard,
+        blobs: BlobStore,
         jobs: JobQueue,
         limits: UploadLimits,
     ) -> None:
         self._decoder = decoder
         self._board = board
+        self._blobs = blobs
         self._jobs = jobs
         self._limits = limits
 
@@ -53,8 +56,9 @@ class TrackService:
             return track_id
         if await self._board.analysing_count() >= self._limits.max_pending:
             raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
+        await self._blobs.put(upload_key(track_id), data)
         await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
-        self._jobs.enqueue(AnalysisJob(track_id=track_id, data=data))
+        self._jobs.enqueue(AnalysisJob(track_id=track_id))
         return track_id
 
     def _inspect(self, data: bytes) -> TrackId:

@@ -56,3 +56,17 @@ class InMemoryProgressFeed:
 async def drain(queue: asyncio.Queue[TrackStatus]) -> AsyncIterator[TrackStatus]:
     while True:
         yield await queue.get()
+
+
+class InMemoryBlobStore:
+    def __init__(self) -> None:
+        self._blobs: dict[str, bytes] = {}
+
+    async def put(self, key: str, data: bytes) -> None:
+        self._blobs[key] = data
+
+    async def get(self, key: str) -> bytes | None:
+        return self._blobs.get(key)
+
+    async def delete(self, key: str) -> None:
+        self._blobs.pop(key, None)

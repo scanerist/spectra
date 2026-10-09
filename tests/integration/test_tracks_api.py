@@ -10,6 +10,7 @@ from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
+from spectra.tracks.adapters.memory import InMemoryBlobStore
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
 from tests.contract.timeline_fixture import golden_analysis
@@ -26,6 +27,7 @@ class Api:
         service = TrackService(
             decoder=decoder or FakeDecoder(),
             board=self.board,
+            blobs=InMemoryBlobStore(),
             jobs=self.jobs,
             limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
         )

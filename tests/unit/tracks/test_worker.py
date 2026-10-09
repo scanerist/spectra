@@ -6,6 +6,7 @@ import pytest
 from spectra.analysis.domain.errors import UndecodableAudioError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.adapters.memory import InMemoryBlobStore, InMemoryJobQueue
+from spectra.tracks.application.pipeline import AnalysisPipeline
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.worker import (
     KEEPS_CRASHING,
@@ -36,7 +37,10 @@ async def statuses_of(
     store = blobs or InMemoryBlobStore()
     jobs = InMemoryJobQueue()
     worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=store, jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=store,
+        jobs=jobs,
     )
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     if blobs is None:
@@ -83,7 +87,10 @@ async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     jobs = InMemoryJobQueue()
     worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=blobs,
+        jobs=jobs,
     )
     queued = [TrackId.of_content(name) for name in (b"one", b"two")]
     for track in queued:
@@ -144,7 +151,10 @@ async def test_evicted_tracks_lose_their_timelines() -> None:
     jobs = InMemoryJobQueue()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=blobs,
+        jobs=jobs,
     )
     first, second = TrackId.of_content(b"first"), TrackId.of_content(b"second")
     for track in (first, second):
@@ -172,7 +182,10 @@ async def test_a_redelivered_job_for_a_settled_track_changes_nothing() -> None:
     jobs = FakeJobQueue()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=InMemoryBlobStore(), jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=InMemoryBlobStore(),
+        jobs=jobs,
     )
     await board.record(TRACK, READY)
     await jobs.enqueue(AnalysisJob(track_id=TRACK))
@@ -188,7 +201,10 @@ async def test_a_job_for_a_forgotten_track_drops_its_upload() -> None:
     jobs = FakeJobQueue()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     worker = AnalysisWorker(
-        decoder=decoder, board=memory_board(), blobs=blobs, jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=memory_board(),
+        blobs=blobs,
+        jobs=jobs,
     )
     await blobs.put(upload_key(TRACK), b"track")
     await jobs.enqueue(AnalysisJob(track_id=TRACK))
@@ -221,7 +237,10 @@ async def test_a_job_interrupted_by_a_storage_error_can_be_retried() -> None:
         jobs = FakeJobQueue()
         await jobs.enqueue(AnalysisJob(track_id=TRACK))
         worker = AnalysisWorker(
-            decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+            pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+            board=board,
+            blobs=blobs,
+            jobs=jobs,
         )
         with contextlib.suppress(OSError):
             await worker.run()
@@ -236,7 +255,10 @@ async def test_a_job_that_keeps_stopping_the_worker_fails_the_track() -> None:
     jobs = FakeJobQueue()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+        pipeline=AnalysisPipeline(decoder=decoder, encoder=fake_timeline),
+        board=board,
+        blobs=blobs,
+        jobs=jobs,
     )
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     await blobs.put(upload_key(TRACK), b"track")

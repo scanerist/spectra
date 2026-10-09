@@ -2,14 +2,14 @@ import asyncio
 import logging
 from typing import Final
 
-from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.errors import (
     AnalysisError,
     UndecodableAudioError,
     UnsupportedFormatError,
 )
-from spectra.analysis.domain.track_analysis import AnalysisStage, StageListener, analyse_signal
-from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue, TimelineEncoder
+from spectra.analysis.domain.track_analysis import AnalysisStage, StageListener
+from spectra.tracks.application.pipeline import AnalysisPipeline
+from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.track import (
@@ -42,17 +42,15 @@ class AnalysisWorker:
     def __init__(
         self,
         *,
-        decoder: AudioDecoder,
+        pipeline: AnalysisPipeline,
         board: StatusBoard,
         blobs: BlobStore,
         jobs: JobQueue,
-        encoder: TimelineEncoder,
     ) -> None:
-        self._decoder = decoder
+        self._pipeline = pipeline
         self._board = board
         self._blobs = blobs
         self._jobs = jobs
-        self._encoder = encoder
 
     async def close(self) -> None:
         for job in await self._jobs.close():
@@ -104,7 +102,7 @@ class AnalysisWorker:
         self, job: AnalysisJob, data: bytes, report: StageListener, stages: StageQueue
     ) -> Outcome:
         try:
-            return await asyncio.to_thread(self._analyse_blocking, data, report)
+            return await asyncio.to_thread(self._pipeline.run, data, report)
         except (UndecodableAudioError, UnsupportedFormatError) as error:
             return Failed(code=FailureCode.UNDECODABLE, message=str(error))
         except AnalysisError as error:
@@ -114,7 +112,3 @@ class AnalysisWorker:
             return Failed(code=FailureCode.INTERNAL, message="the analysis crashed")
         finally:
             stages.put_nowait(None)
-
-    def _analyse_blocking(self, data: bytes, report: StageListener) -> tuple[TrackSummary, bytes]:
-        analysis = analyse_signal(self._decoder.decode(data), on_stage=report)
-        return TrackSummary.of_analysis(analysis), self._encoder(analysis)

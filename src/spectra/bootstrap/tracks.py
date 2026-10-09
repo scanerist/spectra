@@ -14,6 +14,7 @@ from spectra.tracks.adapters.memory import (
     InMemoryUploadQuota,
 )
 from spectra.tracks.adapters.redis_quota import RedisUploadQuota
+from spectra.tracks.application.pipeline import AnalysisPipeline
 from spectra.tracks.application.ports import BlobStore, JobQueue, UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
@@ -75,9 +76,8 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
 
 def analysis_worker(parts: TrackParts) -> AnalysisWorker:
     return AnalysisWorker(
-        decoder=SoundfileDecoder(),
+        pipeline=AnalysisPipeline(decoder=SoundfileDecoder(), encoder=encode_timeline),
         board=parts.board,
         blobs=parts.blobs,
         jobs=parts.jobs,
-        encoder=encode_timeline,
     )

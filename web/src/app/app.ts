@@ -39,6 +39,8 @@ export function startApp(root: Document): void {
   const back = element(root, "#back", HTMLAnchorElement);
   const clock = element(root, "#clock", HTMLSpanElement);
   const play = element(root, "#play", HTMLButtonElement);
+  const pauseIcon = element(root, "#icon-pause", SVGSVGElement);
+  const playIcon = element(root, "#icon-play", SVGSVGElement);
   const repo = element(root, "#repo", HTMLAnchorElement);
   const unmute = element(root, "#unmute", HTMLButtonElement);
   const repositoryUrl = import.meta.env.VITE_REPOSITORY_URL ?? "";
@@ -138,6 +140,7 @@ export function startApp(root: Document): void {
 
   let lastClockS: number | null = null;
   let motionS = 0;
+  let shownRunning = true;
   const frame = (nowMs: number) => {
     const clockS = nowMs / 1000;
     const dtS = Math.min(MAX_FRAME_DT_S, clockS - (lastClockS ?? clockS));
@@ -150,8 +153,12 @@ export function startApp(root: Document): void {
     }
     if (track !== null && (current === "main" || current === "analysis")) {
       clock.textContent = `${clockText(moment.timeS)} / ${clockText(track.info.durationS)}`;
-      play.textContent = running ? "❚❚" : "▶";
-      play.setAttribute("aria-label", running ? "Пауза" : "Продолжить");
+      if (running !== shownRunning) {
+        shownRunning = running;
+        pauseIcon.toggleAttribute("hidden", !running);
+        playIcon.toggleAttribute("hidden", running);
+        play.setAttribute("aria-label", running ? "Пауза" : "Продолжить");
+      }
       unmute.hidden = running || (player?.pausedByUser ?? true);
     }
     if (current === "main") {

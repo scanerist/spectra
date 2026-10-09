@@ -110,6 +110,13 @@ header .r {
   color: var(--ink);
 }
 
+.ico {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  shape-rendering: crispEdges;
+}
+
 :focus-visible {
   outline: 1px solid var(--acc);
   outline-offset: 2px;

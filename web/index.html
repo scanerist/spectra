@@ -16,7 +16,10 @@
         </div>
         <div class="r">
           <span id="clock" class="mut" hidden>0:00 / 0:00</span>
-          <button class="btn" id="play" type="button" aria-label="Пауза" hidden>❚❚</button>
+          <button class="btn" id="play" type="button" aria-label="Пауза" hidden>
+            <svg class="ico" id="icon-pause" viewBox="0 0 7 7" aria-hidden="true"><rect x="1" y="0" width="2" height="7" /><rect x="4" y="0" width="2" height="7" /></svg>
+            <svg class="ico" id="icon-play" viewBox="0 0 7 7" aria-hidden="true" hidden><rect x="1" y="0" width="1" height="7" /><rect x="2" y="1" width="1" height="5" /><rect x="3" y="2" width="1" height="3" /><rect x="4" y="3" width="1" height="1" /></svg>
+          </button>
           <a class="btn bare" id="repo" href="#start" hidden>github</a>
         </div>
       </header>
@@ -55,7 +58,7 @@
             <div class="cv fill"><canvas id="c-ridge"></canvas></div>
             <div class="scan"></div>
             <span class="k tl"></span><span class="k tr"></span><span class="k bl"></span><span class="k br"></span>
-            <button class="btn acc unmute" id="unmute" type="button" hidden>▶ включить звук</button>
+            <button class="btn acc unmute" id="unmute" type="button" hidden>звук</button>
           </div>
           <aside class="tempo">
             <div class="bpm"><b id="bpm">0.0</b><span class="mut">bpm</span></div>

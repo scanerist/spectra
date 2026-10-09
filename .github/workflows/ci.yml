@@ -159,5 +159,14 @@ jobs:
           --retry 10 --retry-delay 3 --retry-all-errors
           --user "admin:$GRAFANA_ADMIN_PASSWORD"
           http://127.0.0.1:3000/api/dashboards/uid/spectra
-      - if: failure()
-        run: docker compose logs
+      - name: show why the stack failed
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs
+          docker compose ps --all --format '{{.Service}} {{.State}} {{.Health}}' |
+            awk '$2 != "running" || ($3 != "" && $3 != "healthy") { print $1 }' |
+            while read -r service; do
+              tail=$(docker compose logs --no-color --tail 30 "$service" 2>&1 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')
+              echo "::error title=$service is not running or healthy::$tail"
+            done

@@ -1,9 +1,10 @@
 import { element } from "../app/dom";
 import type { AnalysedTrack } from "../app/session";
-import { barAt, frameAt } from "../contract/lookup";
+import { barAt, barPosition, frameAt } from "../contract/lookup";
+import { levelOf } from "../contract/timeline";
 import { pixelView } from "../pixel/canvas";
 import { bandHistory } from "../view/bands";
-import { type BarSnapshot, FourierMorph, snapshotOf } from "../view/fourier";
+import { type BarSnapshot, breathOf, FourierMorph, snapshotOf } from "../view/fourier";
 import { createWindingView, drawEpicycles, drawMagnitude, drawWire } from "./analysis-views";
 import { HISTORY_STEP_FRAMES, type Moment } from "./main";
 
@@ -37,26 +38,26 @@ export function mountAnalysis(
       snapshot = null;
       drawWinding = createWindingView(sampleRateHz());
     },
-    draw({ timeS, dtS, running, motionS }) {
+    draw({ timeS, dtS, running }) {
       if (track === null || drawWinding === null) {
         return;
       }
       const { info, timeline } = track;
-      const currentBar = barAt(
-        timeS,
-        { bpm: info.bpm, beatOffsetS: info.beatOffsetS },
-        timeline.barCount,
-      );
+      const grid = { bpm: info.bpm, beatOffsetS: info.beatOffsetS };
+      const position = barPosition(timeS, grid);
+      const currentBar = barAt(timeS, grid, timeline.barCount);
       if (currentBar !== bar || snapshot === null) {
         bar = currentBar;
         snapshot = snapshotOf(timeline, bar);
       }
-      morph.step(snapshot, running ? dtS : 0, running);
+      morph.step(snapshot, running ? dtS : 0);
+      morph.turn(position);
       const frame = frameAt(timeS, timeline.frameRateHz, timeline.frameCount);
+      const breath = breathOf(levelOf(timeline, frame, "kick"));
       drawWire(wire, bandHistory(timeline, frame, WIRE_ROWS, HISTORY_STEP_FRAMES));
-      drawEpicycles(epicycles, morph.epicycles);
-      drawWinding(winding, morph.epicycles, motionS);
-      drawMagnitude(magnitude, morph.magnitude, morph.epicycles, motionS);
+      drawEpicycles(epicycles, morph.epicycles, breath);
+      drawWinding(winding, morph.epicycles, position, breath);
+      drawMagnitude(magnitude, morph.magnitude, morph.epicycles, position);
     },
   };
 }

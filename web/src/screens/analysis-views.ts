@@ -7,12 +7,12 @@ import type { Epicycle } from "../view/fourier";
 const TURN_RAD = 2 * Math.PI;
 const WIRE_COLUMNS = 40;
 const WINDOW_SAMPLES = 2048;
-const SWEEP_RATE_PER_S = 0.08;
 const VISIBLE_AMP = 0.01;
 const SILENT_LEVEL = 1e-4;
 
-export function sweepHz(motionS: number): number {
-  return FOURIER_LOW_HZ * (FOURIER_HIGH_HZ / FOURIER_LOW_HZ) ** ((motionS * SWEEP_RATE_PER_S) % 1);
+export function sweepHz(barPosition: number): number {
+  const share = ((barPosition % 1) + 1) % 1;
+  return FOURIER_LOW_HZ * (FOURIER_HIGH_HZ / FOURIER_LOW_HZ) ** share;
 }
 
 function binOf(freqHz: number): number {
@@ -56,7 +56,11 @@ export function drawWire(view: PixelView, rows: readonly Uint8Array[]): void {
   target.globalAlpha = 1;
 }
 
-export function drawEpicycles(view: PixelView, epicycles: readonly Epicycle[]): void {
+export function drawEpicycles(
+  view: PixelView,
+  epicycles: readonly Epicycle[],
+  breath: number,
+): void {
   const { target, width, height } = view;
   clear(view);
   ink(target, INK, 0.12);
@@ -71,7 +75,7 @@ export function drawEpicycles(view: PixelView, epicycles: readonly Epicycle[]): 
     visible.reduce((sum, epicycle) => sum + epicycle.amp, 0),
   );
   const centreY = height / 2;
-  const radiusScale = (height / 2 - 4) / ampSum;
+  const radiusScale = ((height / 2 - 4) / ampSum) * breath;
   let tip: Point = [radiusScale * ampSum + 4, centreY];
   for (const epicycle of visible) {
     const radius = epicycle.amp * radiusScale;
@@ -152,7 +156,12 @@ export function fourierAt(
 
 export function createWindingView(sampleRateHz: number) {
   const samples = new Float32Array(WINDOW_SAMPLES);
-  return (view: PixelView, epicycles: readonly Epicycle[], motionS: number): void => {
+  return (
+    view: PixelView,
+    epicycles: readonly Epicycle[],
+    barPosition: number,
+    breath: number,
+  ): void => {
     const { target, width, height } = view;
     clear(view);
     const size = Math.min(width, height);
@@ -166,9 +175,9 @@ export function createWindingView(sampleRateHz: number) {
       return;
     }
     const peak = windowOf(epicycles, sampleRateHz, samples);
-    const freqHz = sweepHz(motionS);
+    const freqHz = sweepHz(barPosition);
     const stepRad = (TURN_RAD * freqHz) / sampleRateHz;
-    const scale = (size / 2 - 3) / peak;
+    const scale = ((size / 2 - 3) / peak) * breath;
     const points: Point[] = [];
     for (let n = 0; n < samples.length; n += 4) {
       const value = samples[n] ?? 0;
@@ -184,7 +193,7 @@ export function createWindingView(sampleRateHz: number) {
       epicycles.reduce((sum, epicycle) => sum + epicycle.amp, 0),
     );
     const [real, imaginary] = fourierAt(samples, freqHz, sampleRateHz);
-    const centroidScale = (0.8 * (size / 2)) / ((ampSum * samples.length) / 4);
+    const centroidScale = ((0.8 * (size / 2)) / ((ampSum * samples.length) / 4)) * breath;
     const centroid: Point = [centreX + real * centroidScale, centreY - imaginary * centroidScale];
     ink(target, INK);
     segment(target, [centreX, centreY], centroid);
@@ -197,7 +206,7 @@ export function drawMagnitude(
   view: PixelView,
   magnitude: Float32Array,
   epicycles: readonly Epicycle[],
-  motionS: number,
+  barPosition: number,
 ): void {
   const { target, width, height } = view;
   clear(view);
@@ -210,7 +219,7 @@ export function drawMagnitude(
   const x = (bin: number) => 2 + (bin / (FOURIER_BIN_COUNT - 1)) * (width - 4);
   const y = (level: number) => height - 3 - level * (height - 8);
   const curve = Array.from(magnitude, (level, bin): Point => [x(bin), y(level)]);
-  const cursor = Math.round(binOf(sweepHz(motionS)));
+  const cursor = Math.round(binOf(sweepHz(barPosition)));
   ink(target, INK, 0.18);
   polyline(target, curve);
   ink(target, INK);

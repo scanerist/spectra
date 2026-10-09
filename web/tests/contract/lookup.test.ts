@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { barAt, beatAt, beatDurationS, frameAt, sectionAt } from "../../src/contract/lookup";
+import {
+  barAt,
+  barPosition,
+  beatAt,
+  beatDurationS,
+  frameAt,
+  sectionAt,
+} from "../../src/contract/lookup";
 
 const FRAME_RATE_HZ = 44_100 / 512;
 const GRID = { bpm: 120, beatOffsetS: 0.3 };
@@ -51,6 +58,12 @@ describe("beats", () => {
 });
 
 describe("bars", () => {
+  it("count continuously from the grid's first downbeat", () => {
+    expect(barPosition(0.3, GRID)).toBe(0);
+    expect(barPosition(0.3 + 3, GRID)).toBeCloseTo(1.5);
+    expect(barPosition(0.1, GRID)).toBeCloseTo(-0.1);
+  });
+
   it("hold four beats", () => {
     expect(barAt(0.3 + 1.99, GRID, 10)).toBe(0);
     expect(barAt(0.3 + 2.01, GRID, 10)).toBe(1);

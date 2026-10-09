@@ -9,7 +9,8 @@ import {
 
 export const EPICYCLE_LIMIT = 4;
 export const EASE_RATE_PER_S = 3.5;
-export const ROTATION_SCALE = 0.004;
+export const MAX_TURNS_PER_BAR = 8;
+export const BREATH_FLOOR = 0.7;
 
 const MATCH_DISTANCE = 0.2;
 const FADED_AMP = 0.01;
@@ -40,6 +41,14 @@ export function easeFactor(dtS: number): number {
   return 1 - Math.exp(-dtS * EASE_RATE_PER_S);
 }
 
+export function turnsPerBar(freqHz: number, lowestHz: number): number {
+  return Math.min(MAX_TURNS_PER_BAR, Math.max(1, Math.round(freqHz / lowestHz)));
+}
+
+export function breathOf(level: number): number {
+  return BREATH_FLOOR + (1 - BREATH_FLOOR) * level;
+}
+
 export class FourierMorph {
   readonly magnitude = new Float32Array(FOURIER_BIN_COUNT);
   epicycles: Epicycle[] = [];
@@ -47,7 +56,7 @@ export class FourierMorph {
 
   constructor(private readonly random: () => number) {}
 
-  step(target: BarSnapshot, dtS: number, running: boolean): void {
+  step(target: BarSnapshot, dtS: number): void {
     const k = this.#started ? easeFactor(dtS) : 1;
     this.#started = true;
     for (let bin = 0; bin < FOURIER_BIN_COUNT; bin += 1) {
@@ -58,9 +67,6 @@ export class FourierMorph {
     for (const epicycle of this.epicycles) {
       epicycle.amp += (epicycle.targetAmp - epicycle.amp) * k;
       epicycle.freqHz += (epicycle.targetFreqHz - epicycle.freqHz) * k;
-      if (running) {
-        epicycle.angleRad += TURN_RAD * epicycle.freqHz * ROTATION_SCALE * dtS;
-      }
     }
     const visible = this.epicycles.filter(
       (epicycle) => epicycle.targetAmp > 0 || epicycle.amp > FADED_AMP,
@@ -73,6 +79,17 @@ export class FourierMorph {
     this.epicycles = visible
       .filter((epicycle) => epicycle.targetAmp > 0 || kept.has(epicycle))
       .sort((left, right) => left.targetFreqHz - right.targetFreqHz);
+  }
+
+  turn(barPosition: number): void {
+    const sounding = this.epicycles.filter((epicycle) => epicycle.targetAmp > 0);
+    const lowestHz = Math.min(
+      ...(sounding.length > 0 ? sounding : this.epicycles).map((epicycle) => epicycle.targetFreqHz),
+    );
+    for (const epicycle of this.epicycles) {
+      const turns = turnsPerBar(epicycle.targetFreqHz, lowestHz);
+      epicycle.angleRad = epicycle.startPhaseRad + TURN_RAD * turns * barPosition;
+    }
   }
 
   #retarget(components: readonly BarPeak[]): void {
@@ -90,13 +107,14 @@ export class FourierMorph {
     }
     components.forEach((component, index) => {
       if (!used.has(index)) {
+        const startPhaseRad = this.random() * TURN_RAD;
         this.epicycles.push({
           freqHz: component.freqHz,
           amp: 0,
           targetFreqHz: component.freqHz,
           targetAmp: component.amp,
-          angleRad: this.random() * TURN_RAD,
-          startPhaseRad: this.random() * TURN_RAD,
+          angleRad: startPhaseRad,
+          startPhaseRad,
         });
       }
     });

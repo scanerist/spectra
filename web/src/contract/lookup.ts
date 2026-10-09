@@ -39,6 +39,10 @@ export function barAt(timeS: number, grid: BeatGrid, barCount: number): number {
   return clamp(Math.floor(beatAt(timeS, grid).beat / BEATS_PER_BAR), 0, barCount - 1);
 }
 
+export function barPosition(timeS: number, grid: BeatGrid): number {
+  return (timeS - grid.beatOffsetS) / (beatDurationS(grid) * BEATS_PER_BAR);
+}
+
 export function sectionAt(timeS: number, sections: readonly Span[]): number {
   const index = sections.findIndex((section) => timeS < section.endS);
   return index === -1 ? sections.length - 1 : index;

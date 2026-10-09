@@ -9,10 +9,11 @@ function epicycle(freqHz: number, amp: number): Epicycle {
 }
 
 describe("the winding view", () => {
-  it("sweeps the fourier range once every 12.5 seconds of playback", () => {
+  it("sweeps the fourier range once per bar from the downbeat", () => {
     expect(sweepHz(0)).toBeCloseTo(30);
-    expect(sweepHz(6.25)).toBeCloseTo(Math.sqrt(30 * 600));
-    expect(sweepHz(12.5)).toBeCloseTo(30);
+    expect(sweepHz(4.5)).toBeCloseTo(Math.sqrt(30 * 600));
+    expect(sweepHz(5)).toBeCloseTo(30);
+    expect(sweepHz(-0.5)).toBeCloseTo(Math.sqrt(30 * 600));
   });
 
   it("finds a bar's frequency in the window it synthesises", () => {

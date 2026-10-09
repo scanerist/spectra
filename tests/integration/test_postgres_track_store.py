@@ -1,6 +1,6 @@
 import os
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from alembic import command
@@ -49,9 +49,9 @@ async def last_seen_at(engine: AsyncEngine, track_id: TrackId) -> datetime:
     return seen_at
 
 
-async def backdate(engine: AsyncEngine, track_id: TrackId) -> None:
+async def backdate(engine: AsyncEngine, track_id: TrackId, seen_at: datetime = LONG_AGO) -> None:
     statement = (
-        update_rows(TRACKS).where(TRACKS.c.track_id == track_id.value).values(last_seen_at=LONG_AGO)
+        update_rows(TRACKS).where(TRACKS.c.track_id == track_id.value).values(last_seen_at=seen_at)
     )
     async with engine.begin() as connection:
         await connection.execute(statement)
@@ -120,3 +120,24 @@ async def test_the_schema_downgrades_to_nothing(engine: AsyncEngine) -> None:
         await connection.run_sync(downgrade_to_base)
         tables = await connection.execute(text("SELECT to_regclass('tracks')"))
         assert tables.scalar_one() is None
+
+
+async def test_only_tracks_unseen_for_long_enough_are_stale(
+    engine: AsyncEngine, store: PostgresTrackStore
+) -> None:
+    for name in ("old", "new"):
+        await store.save(track(name), READY)
+    await backdate(engine, track("old"), datetime.now(UTC) - timedelta(days=31))
+    await backdate(engine, track("new"), datetime.now(UTC) - timedelta(days=29))
+    month_s = timedelta(days=30).total_seconds()
+    assert await store.stale_tracks(unseen_for_s=month_s, limit=10) == [track("old")]
+
+
+async def test_stale_tracks_come_oldest_first_up_to_the_limit(
+    engine: AsyncEngine, store: PostgresTrackStore
+) -> None:
+    for days, name in enumerate(("a", "b", "c"), start=40):
+        await store.save(track(name), READY)
+        await backdate(engine, track(name), datetime.now(UTC) - timedelta(days=days))
+    stale = await store.stale_tracks(unseen_for_s=timedelta(days=30).total_seconds(), limit=2)
+    assert stale == [track("c"), track("b")]

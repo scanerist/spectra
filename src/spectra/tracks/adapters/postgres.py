@@ -1,8 +1,20 @@
+from datetime import timedelta
 from typing import Final
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Column, Connection, DateTime, MetaData, String, Table, func, select
+from sqlalchemy import (
+    Column,
+    Connection,
+    DateTime,
+    Interval,
+    MetaData,
+    String,
+    Table,
+    func,
+    literal,
+    select,
+)
 from sqlalchemy import delete as delete_rows
 from sqlalchemy import update as update_rows
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -74,6 +86,18 @@ class PostgresTrackStore:
 
     async def evict_settled(self, *, keep: TrackId) -> list[TrackId]:  # noqa: ARG002
         return []
+
+    async def stale_tracks(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
+        cutoff = func.now() - literal(timedelta(seconds=unseen_for_s), Interval())
+        statement = (
+            select(TRACKS.c.track_id)
+            .where(TRACKS.c.last_seen_at < cutoff)
+            .order_by(TRACKS.c.last_seen_at)
+            .limit(limit)
+        )
+        async with self._engine.connect() as connection:
+            rows = (await connection.execute(statement)).scalars().all()
+        return [TrackId(track_id) for track_id in rows]
 
 
 def alembic_config(connection: Connection) -> Config:

@@ -44,6 +44,10 @@ class TrackStore(Protocol):
     async def evict_settled(self, *, keep: TrackId) -> list[TrackId]: ...
 
 
+class TrackExpiry(Protocol):
+    async def stale_tracks(self, *, unseen_for_s: float, limit: int) -> list[TrackId]: ...
+
+
 class ProgressFeed(Protocol):
     async def publish(self, track_id: TrackId, status: TrackStatus) -> None: ...
 

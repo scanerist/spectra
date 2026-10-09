@@ -20,10 +20,11 @@ jobs:
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      SPECTRA_DOMAIN: ${{ vars.SPECTRA_DOMAIN }}
     steps:
       - name: check deployment settings
         run: |
-          for name in DEPLOY_HOST DEPLOY_USER; do
+          for name in DEPLOY_HOST DEPLOY_USER SPECTRA_DOMAIN; do
             if [ -z "${!name}" ]; then
               echo "::error::set $name in the production environment variables"
               exit 1
@@ -57,10 +58,11 @@ jobs:
             "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
       - name: upload compose file and environment
         env:
-          SPECTRA_BIND_ADDRESS: ${{ vars.SPECTRA_BIND_ADDRESS }}
-          SPECTRA_API_PORT: ${{ vars.SPECTRA_API_PORT }}
+          SPECTRA_HTTP_PORT: ${{ vars.SPECTRA_HTTP_PORT }}
+          SPECTRA_HTTPS_PORT: ${{ vars.SPECTRA_HTTPS_PORT }}
           SPECTRA_LOG_LEVEL: ${{ vars.SPECTRA_LOG_LEVEL }}
           SPECTRA_API_MEMORY_LIMIT: ${{ vars.SPECTRA_API_MEMORY_LIMIT }}
+          SPECTRA_WORKER_MEMORY_LIMIT: ${{ vars.SPECTRA_WORKER_MEMORY_LIMIT }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
@@ -68,8 +70,9 @@ jobs:
         run: |
           environment_file="$RUNNER_TEMP/spectra.env"
           install -m 600 /dev/null "$environment_file"
-          for name in SPECTRA_IMAGE SPECTRA_BIND_ADDRESS SPECTRA_API_PORT SPECTRA_LOG_LEVEL \
-            SPECTRA_API_MEMORY_LIMIT POSTGRES_PASSWORD REDIS_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY; do
+          for name in SPECTRA_IMAGE SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT \
+            SPECTRA_LOG_LEVEL SPECTRA_API_MEMORY_LIMIT SPECTRA_WORKER_MEMORY_LIMIT \
+            POSTGRES_PASSWORD REDIS_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY; do
             value="${!name}"
             if [ -z "$value" ]; then
               continue
@@ -94,5 +97,7 @@ jobs:
           ssh spectra 'cd spectra && docker compose pull && docker compose up --detach --wait --remove-orphans'
       - name: smoke test
         run: ssh spectra 'cd spectra && docker compose exec -T api spectra-smoke'
+      - name: check the public endpoint
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "https://$SPECTRA_DOMAIN/ready"
       - if: failure()
         run: ssh spectra 'cd spectra && docker compose ps && docker compose logs --tail 200'

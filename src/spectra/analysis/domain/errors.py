@@ -36,3 +36,7 @@ class TempoNotFoundError(AnalysisError):
 
 class InvalidBeatGridError(AnalysisError):
     pass
+
+
+class InvalidSectionError(AnalysisError):
+    pass

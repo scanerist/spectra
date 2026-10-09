@@ -97,7 +97,7 @@ describe("loading a track", () => {
     expect(loaded).toEqual({ info: INFO, timeline: TIMELINE, audio: "audio" });
     expect(api.uploads).toEqual(["kicks.wav"]);
     expect(progress).toEqual([
-      [0, "загружаю"],
+      [0, "читаю файл"],
       [UPLOAD_SHARE, "декодирую"],
       [UPLOAD_SHARE + (1 - UPLOAD_SHARE) * 0.55, "ищу темп"],
       [1, "готово"],

@@ -4,8 +4,8 @@ import {
   AudioDecodeError,
   DONE_LABEL,
   ProtocolMismatchError,
+  READING_LABEL,
   STAGE_LABELS,
-  UPLOADING_LABEL,
 } from "./messages";
 
 export const UPLOAD_SHARE = 0.1;
@@ -46,7 +46,7 @@ export async function loadTrack<A>(
   if (!isAudioFile(file)) {
     throw new ApiError("unsupported_format", "the file is not audio");
   }
-  onProgress(0, UPLOADING_LABEL);
+  onProgress(0, READING_LABEL);
   const protocol = await deps.api.protocol(signal);
   if (protocol !== PROTOCOL_VERSION) {
     throw new ProtocolMismatchError(`the engine speaks protocol ${protocol}`);

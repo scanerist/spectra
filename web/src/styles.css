@@ -393,7 +393,7 @@ header .r {
   z-index: 2;
 }
 
-.tl {
+.strip {
   position: relative;
   height: 12px;
   margin-block: 14px;
@@ -402,20 +402,20 @@ header .r {
   cursor: pointer;
 }
 
-.tl span {
+.strip span {
   min-width: 0;
   background: rgba(232, 230, 225, 0.12);
 }
 
-.tl span.loud {
+.strip span.loud {
   background: rgba(232, 230, 225, 0.3);
 }
 
-.tl span.on {
+.strip span.on {
   background: var(--acc);
 }
 
-.tl .head {
+.strip .head {
   position: absolute;
   top: -4px;
   bottom: -4px;

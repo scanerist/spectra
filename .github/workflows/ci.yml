@@ -100,6 +100,9 @@ jobs:
       SPECTRA_DOMAIN: localhost
       SPECTRA_HTTP_PORT: 8080
       SPECTRA_HTTPS_PORT: 8443
+      SPECTRA_GRAFANA_BIND_ADDRESS: 127.0.0.1
+      SPECTRA_GRAFANA_PORT: 3000
+      GRAFANA_ADMIN_PASSWORD: ci-grafana-password
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -117,5 +120,22 @@ jobs:
       - run: docker compose exec -T api spectra-smoke
       - run: test "$(docker compose ps --quiet --status running worker)" != ""
       - run: curl --fail --silent --show-error --insecure https://localhost:8443/ready
+      - name: check that prometheus scrapes every target
+        run: |
+          query='http://localhost:9090/api/v1/query?query=min(up)'
+          for _ in $(seq 30); do
+            if docker compose exec -T prometheus wget -qO- "$query" | grep -q '"1"\]'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose exec -T prometheus wget -qO- 'http://localhost:9090/api/v1/targets'
+          exit 1
+      - name: check that grafana has the dashboard
+        run: >-
+          curl --fail --silent --show-error --output /dev/null
+          --retry 10 --retry-delay 3 --retry-all-errors
+          --user "admin:$GRAFANA_ADMIN_PASSWORD"
+          http://127.0.0.1:3000/api/dashboards/uid/spectra
       - if: failure()
         run: docker compose logs

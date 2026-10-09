@@ -23,6 +23,7 @@ x-spectra: &spectra
     SPECTRA_MODE: hosted
     SPECTRA_FORWARDED_ALLOW_IPS: "*"
     SPECTRA_UPLOADS_PER_HOUR: ${SPECTRA_UPLOADS_PER_HOUR:-20}
+    SPECTRA_METRICS_PORT: 9100
     SPECTRA_POSTGRES_HOST: postgres
     SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the production environment on GitHub}
     SPECTRA_REDIS_HOST: redis
@@ -106,6 +107,58 @@ services:
       api:
         condition: service_healthy
 
+  prometheus:
+    <<: *service
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${SPECTRA_METRICS_RETENTION:-15d}
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+    networks:
+      - backend
+      - monitoring
+    read_only: true
+    cap_drop:
+      - ALL
+    mem_limit: ${SPECTRA_PROMETHEUS_MEMORY_LIMIT:-512m}
+    volumes:
+      - prometheus:/prometheus
+
+  grafana:
+    <<: *service
+    image: grafana/grafana:12.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in the production environment on GitHub}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/spectra.json
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/spectra.yaml
+      - source: grafana-dashboards
+        target: /etc/grafana/provisioning/dashboards/spectra.yaml
+      - source: grafana-spectra-dashboard
+        target: /etc/grafana/dashboards/spectra.json
+    ports:
+      - "${SPECTRA_GRAFANA_BIND_ADDRESS:?set SPECTRA_GRAFANA_BIND_ADDRESS in the production environment on GitHub}:${SPECTRA_GRAFANA_PORT:?set SPECTRA_GRAFANA_PORT in the production environment on GitHub}:3000"
+    networks:
+      - monitoring
+    cap_drop:
+      - ALL
+    mem_limit: ${SPECTRA_GRAFANA_MEMORY_LIMIT:-384m}
+    volumes:
+      - grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+
   postgres:
     <<: *service
     image: postgres:18.6-alpine
@@ -169,6 +222,7 @@ networks:
   edge:
   backend:
     internal: true
+  monitoring:
 
 volumes:
   postgres:
@@ -177,3 +231,365 @@ volumes:
   s3-iam:
   caddy-data:
   caddy-config:
+  prometheus:
+  grafana:
+
+configs:
+  prometheus:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: api
+          static_configs:
+            - targets: ["api:9100"]
+        - job_name: worker
+          static_configs:
+            - targets: ["worker:9100"]
+        - job_name: prometheus
+          static_configs:
+            - targets: ["localhost:9090"]
+  grafana-datasources:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus:9090
+          isDefault: true
+  grafana-dashboards:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: spectra
+          type: file
+          allowUiUpdates: false
+          options:
+            path: /etc/grafana/dashboards
+  grafana-spectra-dashboard:
+    content: |
+      {
+        "uid": "spectra",
+        "title": "Spectra",
+        "schemaVersion": 39,
+        "version": 1,
+        "editable": true,
+        "time": {
+          "from": "now-6h",
+          "to": "now"
+        },
+        "refresh": "30s",
+        "tags": [
+          "spectra"
+        ],
+        "panels": [
+          {
+            "id": 1,
+            "type": "timeseries",
+            "title": "Uploads per minute by status",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 0,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "sum by (status) (rate(spectra_http_requests_total{method=\"POST\", route=\"/tracks\"}[$$__rate_interval])) * 60",
+                "legendFormat": "{{status}}"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "type": "timeseries",
+            "title": "Analyses per minute by outcome",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 0,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "sum by (outcome) (rate(spectra_analyses_total[$$__rate_interval])) * 60",
+                "legendFormat": "{{outcome}}"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "type": "timeseries",
+            "title": "Analysis time",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 8,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "histogram_quantile(0.5, sum by (le) (rate(spectra_analysis_duration_seconds_bucket[$$__rate_interval])))",
+                "legendFormat": "p50"
+              },
+              {
+                "refId": "B",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "histogram_quantile(0.95, sum by (le) (rate(spectra_analysis_duration_seconds_bucket[$$__rate_interval])))",
+                "legendFormat": "p95"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "type": "timeseries",
+            "title": "Pending analyses",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 8,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "spectra_analyses_pending",
+                "legendFormat": "pending"
+              },
+              {
+                "refId": "B",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "sum(spectra_analyses_running)",
+                "legendFormat": "running"
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "type": "timeseries",
+            "title": "Response time p95 by route",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 16,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "histogram_quantile(0.95, sum by (le, route) (rate(spectra_http_request_duration_seconds_bucket{route!=\"/tracks/{track_id}/events\"}[$$__rate_interval])))",
+                "legendFormat": "{{route}}"
+              }
+            ]
+          },
+          {
+            "id": 6,
+            "type": "timeseries",
+            "title": "Errors and rate limits per minute",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 16,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "sum by (status) (rate(spectra_http_requests_total{status=~\"5..|429\"}[$$__rate_interval])) * 60",
+                "legendFormat": "{{status}}"
+              }
+            ]
+          },
+          {
+            "id": 7,
+            "type": "timeseries",
+            "title": "Memory",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 24,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "bytes"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "process_resident_memory_bytes",
+                "legendFormat": "{{job}}"
+              }
+            ]
+          },
+          {
+            "id": 8,
+            "type": "timeseries",
+            "title": "Tracks expired per day",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 12,
+              "y": 24,
+              "w": 12,
+              "h": 8
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "increase(spectra_tracks_expired_total[1d])",
+                "legendFormat": "expired"
+              }
+            ]
+          },
+          {
+            "id": 9,
+            "type": "state-timeline",
+            "title": "Targets up",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 32,
+              "w": 24,
+              "h": 4
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "expr": "up",
+                "legendFormat": "{{job}}"
+              }
+            ]
+          }
+        ]
+      }

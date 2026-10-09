@@ -21,10 +21,12 @@ jobs:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
       SPECTRA_DOMAIN: ${{ vars.SPECTRA_DOMAIN }}
+      SPECTRA_HTTP_PORT: ${{ vars.SPECTRA_HTTP_PORT }}
+      SPECTRA_HTTPS_PORT: ${{ vars.SPECTRA_HTTPS_PORT }}
     steps:
       - name: check deployment settings
         run: |
-          for name in DEPLOY_HOST DEPLOY_USER SPECTRA_DOMAIN; do
+          for name in DEPLOY_HOST DEPLOY_USER SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT; do
             if [ -z "${!name}" ]; then
               echo "::error::set $name in the production environment variables"
               exit 1
@@ -58,8 +60,6 @@ jobs:
             "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
       - name: upload compose file and environment
         env:
-          SPECTRA_HTTP_PORT: ${{ vars.SPECTRA_HTTP_PORT }}
-          SPECTRA_HTTPS_PORT: ${{ vars.SPECTRA_HTTPS_PORT }}
           SPECTRA_LOG_LEVEL: ${{ vars.SPECTRA_LOG_LEVEL }}
           SPECTRA_API_MEMORY_LIMIT: ${{ vars.SPECTRA_API_MEMORY_LIMIT }}
           SPECTRA_WORKER_MEMORY_LIMIT: ${{ vars.SPECTRA_WORKER_MEMORY_LIMIT }}

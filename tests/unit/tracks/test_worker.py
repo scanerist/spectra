@@ -16,8 +16,9 @@ from spectra.tracks.domain.track import (
     TrackId,
     TrackStatus,
 )
-from tests.fakes import FakeDecoder, fake_timeline, memory_board
+from tests.fakes import FakeDecoder, FakeJobQueue, fake_timeline, memory_board
 from tests.signals import kick_train, signal_of, silence
+from tests.statuses import READY
 
 TRACK = TrackId.of_content(b"track")
 
@@ -157,3 +158,35 @@ async def test_evicted_tracks_lose_their_timelines() -> None:
     assert await blobs.get(timeline_key(first)) is None
     assert isinstance(await board.current(second), Ready)
     assert await blobs.get(timeline_key(second)) is not None
+
+
+@pytest.mark.anyio
+async def test_a_redelivered_job_for_a_settled_track_changes_nothing() -> None:
+    board = memory_board()
+    jobs = FakeJobQueue()
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=InMemoryBlobStore(), jobs=jobs, encoder=fake_timeline
+    )
+    await board.record(TRACK, READY)
+    await jobs.enqueue(AnalysisJob(track_id=TRACK))
+    await worker.run()
+    assert decoder.decoded == []
+    assert await board.current(TRACK) == READY
+    assert jobs.finished == [AnalysisJob(track_id=TRACK)]
+
+
+@pytest.mark.anyio
+async def test_a_job_for_a_forgotten_track_drops_its_upload() -> None:
+    blobs = InMemoryBlobStore()
+    jobs = FakeJobQueue()
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    worker = AnalysisWorker(
+        decoder=decoder, board=memory_board(), blobs=blobs, jobs=jobs, encoder=fake_timeline
+    )
+    await blobs.put(upload_key(TRACK), b"track")
+    await jobs.enqueue(AnalysisJob(track_id=TRACK))
+    await worker.run()
+    assert decoder.decoded == []
+    assert await blobs.get(upload_key(TRACK)) is None
+    assert jobs.finished == [AnalysisJob(track_id=TRACK)]

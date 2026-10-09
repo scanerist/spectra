@@ -20,6 +20,7 @@ from spectra.tracks.domain.track import (
     TrackId,
     TrackStatus,
     TrackSummary,
+    is_final,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,9 +57,16 @@ class AnalysisWorker:
 
     async def run(self) -> None:
         while (job := await self._jobs.take()) is not None:
-            await self._board.record(job.track_id, await self._process(job))
-            await self._evict(keep=job.track_id)
+            if await self._is_pending(job.track_id):
+                await self._board.record(job.track_id, await self._process(job))
+                await self._evict(keep=job.track_id)
+            else:
+                await self._blobs.delete(upload_key(job.track_id))
             await self._jobs.done(job)
+
+    async def _is_pending(self, track_id: TrackId) -> bool:
+        status = await self._board.find(track_id)
+        return status is not None and not is_final(status)
 
     async def _evict(self, *, keep: TrackId) -> None:
         for track_id in await self._board.evict_settled(keep=keep):

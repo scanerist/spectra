@@ -61,6 +61,21 @@ async def test_silent_track_fails_as_analysis_failed() -> None:
 
 
 @pytest.mark.anyio
+async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
+    registry = TrackRegistry(capacity=8)
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    worker = AnalysisWorker(decoder=decoder, registry=registry)
+    queued = [TrackId.of_content(name) for name in (b"one", b"two")]
+    for track in queued:
+        registry.put(track, Analysing.at(AnalysisStage.DECODING))
+        worker.enqueue(AnalysisJob(track_id=track, data=track.value.encode()))
+    worker.close()
+    await worker.run()
+    assert decoder.decoded == []
+    assert all(isinstance(registry.status(track), Failed) for track in queued)
+
+
+@pytest.mark.anyio
 async def test_unexpected_crash_fails_as_internal_and_keeps_the_worker_alive() -> None:
     seen = await statuses_of(FakeDecoder(decode_error=RuntimeError("disk on fire")))
     assert seen[-1] == Failed(code=FailureCode.INTERNAL, message="the analysis crashed")

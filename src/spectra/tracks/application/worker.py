@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Final
 
 from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.errors import (
@@ -14,6 +15,10 @@ from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, T
 
 logger = logging.getLogger(__name__)
 
+SHUT_DOWN: Final = Failed(
+    code=FailureCode.INTERNAL, message="the server shut down before analysing the track"
+)
+
 
 class AnalysisWorker:
     def __init__(self, *, decoder: AudioDecoder, registry: TrackRegistry) -> None:
@@ -25,6 +30,10 @@ class AnalysisWorker:
         self._jobs.put_nowait(job)
 
     def close(self) -> None:
+        while not self._jobs.empty():
+            job = self._jobs.get_nowait()
+            if job is not None:
+                self._registry.put(job.track_id, SHUT_DOWN)
         self._jobs.put_nowait(None)
 
     async def run(self) -> None:

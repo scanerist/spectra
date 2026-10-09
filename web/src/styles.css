@@ -348,38 +348,17 @@ header .r {
   flex: 1;
 }
 
-.tempo {
-  width: 220px;
-  flex: none;
-  border-left: 1px solid var(--line);
-  padding: 20px 24px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.bpm {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.bpm b {
-  font-weight: 400;
-  font-size: 64px;
-  line-height: 0.9;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
 .beats {
+  position: absolute;
+  top: 32px;
+  right: 32px;
+  z-index: 1;
   display: flex;
   gap: 6px;
 }
 
 .beats i {
-  flex: 1;
+  width: 14px;
   height: 10px;
   background: rgba(232, 230, 225, 0.1);
 }
@@ -489,19 +468,6 @@ header .r {
 
   .stage .vis {
     min-height: 300px;
-  }
-
-  .tempo {
-    width: auto;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .tempo .beats {
-    width: 120px;
   }
 
   .trio {

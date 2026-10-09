@@ -1,5 +1,5 @@
 import { element } from "../app/dom";
-import { bpmText, clockText } from "../app/format";
+import { clockText } from "../app/format";
 import type { AnalysedTrack } from "../app/session";
 import { beatAt, frameAt, sectionAt } from "../contract/lookup";
 import { bandsOf } from "../contract/timeline";
@@ -33,7 +33,6 @@ export interface MainControls {
 }
 
 export function mountMain(root: Document, controls: MainControls): MainScreen {
-  const bpm = element(root, "#bpm", HTMLElement);
   const beats = Array.from(element(root, "#beats", HTMLDivElement).children);
   const strip = element(root, "#sections", HTMLDivElement);
   const playhead = element(root, "#playhead", HTMLDivElement);
@@ -62,7 +61,6 @@ export function mountMain(root: Document, controls: MainControls): MainScreen {
   return {
     enter(loaded) {
       track = loaded;
-      bpm.textContent = bpmText(loaded.info.bpm);
       spans = loaded.info.sections.map((section) => {
         const span = root.createElement("span");
         span.style.flex = `${section.endS - section.startS} 1 0`;

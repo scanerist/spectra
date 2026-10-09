@@ -6,7 +6,3 @@ export function clockText(timeS: number): string {
   const seconds = wholeS % SECONDS_PER_MINUTE;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
-
-export function bpmText(bpm: number): string {
-  return bpm.toFixed(1);
-}

@@ -104,19 +104,38 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
         stream.close();
         onEvent(event);
       };
-      stream.addEventListener("progress", (event) => {
-        const body = parse(event.data);
-        onEvent({
-          kind: "progress",
-          stage: field(body, "stage", isStage),
-          progress: field(body, "progress", isNumber),
-        });
-      });
+      const read = (build: () => TrackEvent) => {
+        if (settled) {
+          return;
+        }
+        let event: TrackEvent;
+        try {
+          event = build();
+        } catch (error) {
+          settle({ kind: "failed", error: unreadable(error) });
+          return;
+        }
+        if (event.kind === "progress") {
+          onEvent(event);
+        } else {
+          settle(event);
+        }
+      };
+      stream.addEventListener("progress", (event) =>
+        read(() => {
+          const body = parse(event.data);
+          return {
+            kind: "progress",
+            stage: field(body, "stage", isStage),
+            progress: field(body, "progress", isNumber),
+          };
+        }),
+      );
       stream.addEventListener("ready", (event) =>
-        settle({ kind: "ready", info: trackInfo(parse(event.data)) }),
+        read(() => ({ kind: "ready", info: trackInfo(parse(event.data)) })),
       );
       stream.addEventListener("failed", (event) =>
-        settle({ kind: "failed", error: errorBody(parse(event.data)) }),
+        read(() => ({ kind: "failed", error: errorBody(parse(event.data)) })),
       );
       stream.onerror = () => {
         if (!settled && stream.readyState === CLOSED) {
@@ -181,6 +200,12 @@ function trackInfo(body: unknown): TrackInfo {
       loud: field(section, "loud", isBoolean),
     })),
   };
+}
+
+function unreadable(error: unknown): ApiError {
+  return error instanceof ApiError
+    ? error
+    : new ApiError("internal", "the engine sent an unreadable event");
 }
 
 function parse(data: string): unknown {

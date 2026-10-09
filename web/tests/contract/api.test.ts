@@ -56,7 +56,11 @@ class FakeStream implements EventStream {
   }
 
   emit(type: string, data: unknown): void {
-    this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) }));
+    this.emitRaw(type, JSON.stringify(data));
+  }
+
+  emitRaw(type: string, data: string): void {
+    this.listeners.get(type)?.(new MessageEvent(type, { data }));
   }
 
   drop(readyState: number): void {
@@ -197,5 +201,28 @@ describe("following the analysis", () => {
     const { stream, events } = following();
     stream.drop(0);
     expect(events).toEqual([]);
+  });
+
+  it("settles as failed when the ready event breaks the contract", () => {
+    const { stream, events } = following();
+    stream.emit("ready", { ...TRACK_JSON, bpm: "fast" });
+    const last = events.at(-1);
+    expect(events).toHaveLength(1);
+    expect(last?.kind === "failed" && last.error.code).toBe("internal");
+    expect(stream.closed).toBe(true);
+  });
+
+  it("settles as failed when an event is not json", () => {
+    const { stream, events } = following();
+    stream.emitRaw("progress", "{oops");
+    expect(events.map((event) => event.kind)).toEqual(["failed"]);
+    expect(stream.closed).toBe(true);
+  });
+
+  it("ignores events after settling", () => {
+    const { stream, events } = following();
+    stream.emit("failed", { error: "undecodable", message: "lost sync" });
+    stream.emit("ready", TRACK_JSON);
+    expect(events.map((event) => event.kind)).toEqual(["failed"]);
   });
 });

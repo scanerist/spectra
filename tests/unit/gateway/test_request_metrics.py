@@ -57,3 +57,9 @@ def test_request_time_is_recorded(client: TestClient, registry: CollectorRegistr
     client.get("/health")
     labels = {"method": "GET", "route": "/health"}
     assert registry.get_sample_value("spectra_http_request_duration_seconds_count", labels) == 1.0
+
+
+def test_made_up_methods_share_one_label(client: TestClient, registry: CollectorRegistry) -> None:
+    for method in ("M0", "M1", "BREW"):
+        client.request(method, "/health")
+    assert requests(registry, "OTHER", "/health", "405") == 3.0

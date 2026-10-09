@@ -8,6 +8,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from spectra.shared.clock import Clock
 
 UNMATCHED_ROUTE: Final = "unmatched"
+OTHER_METHOD: Final = "OTHER"
+KNOWN_METHODS: Final = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 REQUEST_BUCKETS_S: Final = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
 
@@ -38,7 +40,7 @@ class RequestMetrics:
         try:
             await self._app(scope, receive, response.send)
         finally:
-            method, route = scope["method"], route_of(scope)
+            method, route = method_of(scope), route_of(scope)
             self._requests.labels(method=method, route=route, status=str(response.status)).inc()
             self._duration.labels(method=method, route=route).observe(
                 self._clock.now_s() - started_s
@@ -54,6 +56,11 @@ class ResponseStatus:
         if message["type"] == "http.response.start":
             self.status = message["status"]
         await self._send(message)
+
+
+def method_of(scope: Scope) -> str:
+    method: str = scope["method"]
+    return method if method in KNOWN_METHODS else OTHER_METHOD
 
 
 def route_of(scope: Scope) -> str:

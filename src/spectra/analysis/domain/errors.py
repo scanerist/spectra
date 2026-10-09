@@ -48,3 +48,11 @@ class UnanalysableSignalError(AnalysisError):
 
 class InvalidTrackAnalysisError(AnalysisError):
     pass
+
+
+class UnsupportedFormatError(AnalysisError):
+    pass
+
+
+class UndecodableAudioError(AnalysisError):
+    pass

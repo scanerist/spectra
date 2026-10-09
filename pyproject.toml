@@ -11,6 +11,8 @@ dependencies = [
     "numpy>=2.5.3",
     "pydantic>=2.14.0",
     "pydantic-settings>=2.15.0",
+    "soundfile>=0.14.0",
+    "soxr>=1.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -60,6 +62,10 @@ mypy_path = ["src", "."]
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = ["soundfile", "soxr"]
+ignore_missing_imports = true
+
 [tool.pytest]
 minversion = "9.0"
 strict = true
@@ -86,7 +92,15 @@ layers = ["adapters", "application", "domain"]
 name = "Analysis domain stays pure"
 type = "forbidden"
 source_modules = ["spectra.analysis.domain"]
-forbidden_modules = ["fastapi", "starlette", "uvicorn", "pydantic", "pydantic_settings"]
+forbidden_modules = [
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "pydantic",
+    "pydantic_settings",
+    "soundfile",
+    "soxr",
+]
 
 [[tool.importlinter.contracts]]
 name = "Gateway does not know concrete adapters"

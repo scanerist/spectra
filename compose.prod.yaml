@@ -116,7 +116,6 @@ services:
     networks:
       - backend
       - monitoring
-    read_only: true
     cap_drop:
       - ALL
     mem_limit: ${SPECTRA_PROMETHEUS_MEMORY_LIMIT:-512m}

@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from spectra.bootstrap import app as bootstrap_app
-from spectra.bootstrap.settings import LogLevel, Settings
+from spectra.bootstrap.hosted import postgres_url
+from spectra.bootstrap.settings import HostedSettings, LogLevel, Settings
 
 
 def test_settings_defaults() -> None:
@@ -55,6 +56,59 @@ def test_settings_reject_invalid_values(
     monkeypatch.setenv(variable, value)
     with pytest.raises(ValidationError):
         Settings()
+
+
+HOSTED_ENVIRONMENT = {
+    "SPECTRA_POSTGRES_HOST": "postgres",
+    "SPECTRA_POSTGRES_PASSWORD": "p@ss:w/rd",
+    "SPECTRA_REDIS_HOST": "redis",
+    "SPECTRA_REDIS_PASSWORD": "redis-secret",
+    "SPECTRA_S3_URL": "http://s3:7070",
+    "SPECTRA_S3_ACCESS_KEY": "spectra",
+    "SPECTRA_S3_SECRET_KEY": "s3-secret",
+}
+
+
+def set_hosted_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in HOSTED_ENVIRONMENT.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_hosted_settings_read_every_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_hosted_environment(monkeypatch)
+    settings = HostedSettings.from_environment()
+    assert (settings.postgres.host, settings.postgres.port) == ("postgres", 5432)
+    assert (settings.postgres.database, settings.postgres.user) == ("spectra", "spectra")
+    assert (settings.redis.host, settings.redis.port, settings.redis.database) == ("redis", 6379, 0)
+    assert (settings.s3.url, settings.s3.bucket) == ("http://s3:7070", "spectra")
+
+
+def test_hosted_settings_keep_secrets_out_of_their_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_hosted_environment(monkeypatch)
+    shown = repr(HostedSettings.from_environment())
+    assert all(secret not in shown for secret in ("p@ss:w/rd", "redis-secret", "s3-secret"))
+
+
+@pytest.mark.parametrize(
+    "variable",
+    ["SPECTRA_POSTGRES_PASSWORD", "SPECTRA_REDIS_HOST", "SPECTRA_S3_SECRET_KEY"],
+    ids=["postgres-password", "redis-host", "s3-secret"],
+)
+def test_hosted_settings_require_each_connection(
+    monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    set_hosted_environment(monkeypatch)
+    monkeypatch.delenv(variable)
+    with pytest.raises(ValidationError):
+        HostedSettings.from_environment()
+
+
+def test_postgres_url_escapes_the_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_hosted_environment(monkeypatch)
+    url = postgres_url(HostedSettings.from_environment().postgres)
+    assert url.render_as_string(hide_password=False) == (
+        "postgresql+asyncpg://spectra:p%40ss%3Aw%2Frd@postgres:5432/spectra"
+    )
 
 
 def test_created_app_serves_health() -> None:

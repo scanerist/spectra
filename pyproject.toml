@@ -25,6 +25,7 @@ dependencies = [
 [project.scripts]
 spectra = "spectra.bootstrap.app:run"
 spectra-healthcheck = "spectra.bootstrap.healthcheck:main"
+spectra-migrate = "spectra.bootstrap.migrate:main"
 spectra-smoke = "spectra.bootstrap.smoke:main"
 
 [build-system]

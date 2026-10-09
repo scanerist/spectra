@@ -8,6 +8,8 @@ from spectra.tracks.adapters.status_records import (
     state_of,
     status_document,
     status_from_document,
+    status_from_json,
+    status_json,
 )
 from spectra.tracks.domain.track import TrackStatus
 from tests.statuses import ANALYSING, EVERY_STATUS, FAILED, READY
@@ -17,6 +19,11 @@ from tests.statuses import ANALYSING, EVERY_STATUS, FAILED, READY
 def test_a_status_survives_a_round_trip_through_json(status: TrackStatus) -> None:
     document = json.loads(json.dumps(status_document(status)))
     assert status_from_document(document) == status
+
+
+@pytest.mark.parametrize("status", EVERY_STATUS)
+def test_a_status_survives_a_round_trip_through_json_bytes(status: TrackStatus) -> None:
+    assert status_from_json(status_json(status)) == status
 
 
 @pytest.mark.parametrize(

@@ -75,6 +75,14 @@ def status_from_document(document: object) -> TrackStatus:
     return status_of(STATUS_RECORDS.validate_python(document))
 
 
+def status_json(status: TrackStatus) -> bytes:
+    return STATUS_RECORDS.dump_json(record_of(status))
+
+
+def status_from_json(data: bytes | str) -> TrackStatus:
+    return status_of(STATUS_RECORDS.validate_json(data))
+
+
 def record_of(status: TrackStatus) -> StatusRecord:
     match status:
         case Analysing(stage=stage, progress=progress):

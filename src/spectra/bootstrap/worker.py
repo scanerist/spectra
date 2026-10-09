@@ -86,7 +86,10 @@ async def every(
     interval_s: float, action: Callable[[], Awaitable[None]], *, stop: asyncio.Event
 ) -> None:
     while not stop.is_set():
-        await action()
+        try:
+            await action()
+        except Exception:
+            logger.exception("a periodic task of the worker failed, trying again later")
         with contextlib.suppress(TimeoutError):
             async with asyncio.timeout(interval_s):
                 await stop.wait()

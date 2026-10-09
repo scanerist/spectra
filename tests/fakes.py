@@ -2,6 +2,7 @@ import asyncio
 
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
+from spectra.analysis.domain.track_analysis import TrackAnalysis
 from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
@@ -82,3 +83,7 @@ def memory_board(*, capacity: int = 8) -> StatusBoard:
 
 def record_now(board: StatusBoard, track_id: TrackId, status: TrackStatus) -> None:
     asyncio.run(board.record(track_id, status))
+
+
+def fake_timeline(analysis: TrackAnalysis) -> bytes:
+    return f"timeline of {analysis.frame_count} frames".encode()

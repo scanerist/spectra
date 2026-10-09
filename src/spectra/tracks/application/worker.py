@@ -9,10 +9,18 @@ from spectra.analysis.domain.errors import (
     UnsupportedFormatError,
 )
 from spectra.analysis.domain.track_analysis import AnalysisStage, StageListener, analyse_signal
-from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
+from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue, TimelineEncoder
 from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.domain.blobs import upload_key
-from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackStatus
+from spectra.tracks.domain.blobs import timeline_key, upload_key
+from spectra.tracks.domain.track import (
+    Analysing,
+    Failed,
+    FailureCode,
+    Ready,
+    TrackId,
+    TrackStatus,
+    TrackSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +30,24 @@ SHUT_DOWN: Final = Failed(
 UPLOAD_GONE: Final = Failed(code=FailureCode.INTERNAL, message="the upload is no longer stored")
 
 type StageQueue = asyncio.Queue[AnalysisStage | None]
+type Outcome = tuple[TrackSummary, bytes] | Failed
 
 
 class AnalysisWorker:
     def __init__(
-        self, *, decoder: AudioDecoder, board: StatusBoard, blobs: BlobStore, jobs: JobQueue
+        self,
+        *,
+        decoder: AudioDecoder,
+        board: StatusBoard,
+        blobs: BlobStore,
+        jobs: JobQueue,
+        encoder: TimelineEncoder,
     ) -> None:
         self._decoder = decoder
         self._board = board
         self._blobs = blobs
         self._jobs = jobs
+        self._encoder = encoder
 
     async def close(self) -> None:
         for job in await self._jobs.close():
@@ -41,7 +57,12 @@ class AnalysisWorker:
     async def run(self) -> None:
         while (job := await self._jobs.take()) is not None:
             await self._board.record(job.track_id, await self._process(job))
+            await self._evict(keep=job.track_id)
             await self._jobs.done(job)
+
+    async def _evict(self, *, keep: TrackId) -> None:
+        for track_id in await self._board.evict_settled(keep=keep):
+            await self._blobs.delete(timeline_key(track_id))
 
     async def _process(self, job: AnalysisJob) -> TrackStatus:
         key = upload_key(job.track_id)
@@ -49,11 +70,16 @@ class AnalysisWorker:
         if data is None:
             return UPLOAD_GONE
         try:
-            return await self._analyse(job, data)
+            outcome = await self._analyse(job, data)
         finally:
             await self._blobs.delete(key)
+        if isinstance(outcome, Failed):
+            return outcome
+        summary, timeline = outcome
+        await self._blobs.put(timeline_key(job.track_id), timeline)
+        return Ready(summary=summary)
 
-    async def _analyse(self, job: AnalysisJob, data: bytes) -> TrackStatus:
+    async def _analyse(self, job: AnalysisJob, data: bytes) -> Outcome:
         loop = asyncio.get_running_loop()
         stages: StageQueue = asyncio.Queue()
 
@@ -68,7 +94,7 @@ class AnalysisWorker:
 
     async def _analyse_in_thread(
         self, job: AnalysisJob, data: bytes, report: StageListener, stages: StageQueue
-    ) -> TrackStatus:
+    ) -> Outcome:
         try:
             return await asyncio.to_thread(self._analyse_blocking, data, report)
         except (UndecodableAudioError, UnsupportedFormatError) as error:
@@ -81,6 +107,6 @@ class AnalysisWorker:
         finally:
             stages.put_nowait(None)
 
-    def _analyse_blocking(self, data: bytes, report: StageListener) -> Ready:
-        signal = self._decoder.decode(data)
-        return Ready(analysis=analyse_signal(signal, on_stage=report))
+    def _analyse_blocking(self, data: bytes, report: StageListener) -> tuple[TrackSummary, bytes]:
+        analysis = analyse_signal(self._decoder.decode(data), on_stage=report)
+        return TrackSummary.of_analysis(analysis), self._encoder(analysis)

@@ -22,8 +22,8 @@ def status_event(track_id: TrackId, status: TrackStatus) -> str:
     match status:
         case Analysing(stage=stage, progress=progress):
             return sse_event("progress", ProgressBody(stage=stage.value, progress=progress))
-        case Ready(analysis=analysis):
-            return sse_event("ready", track_info(track_id, analysis))
+        case Ready(summary=summary):
+            return sse_event("ready", track_info(track_id, summary))
         case Failed(code=code, message=message):
             return sse_event("failed", ErrorBody(error=FAILURE_CODES[code].value, message=message))
 

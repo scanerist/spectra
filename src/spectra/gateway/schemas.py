@@ -1,8 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from spectra.analysis.domain.sections import Section
-from spectra.analysis.domain.track_analysis import TrackAnalysis
-from spectra.tracks.domain.track import TrackId
+from spectra.tracks.domain.track import TrackId, TrackSummary
 
 
 class ApiModel(BaseModel):
@@ -47,11 +46,11 @@ def section_body(section: Section) -> SectionBody:
     )
 
 
-def track_info(track_id: TrackId, analysis: TrackAnalysis) -> TrackInfo:
+def track_info(track_id: TrackId, summary: TrackSummary) -> TrackInfo:
     return TrackInfo(
         track_id=track_id.value,
-        duration_s=analysis.duration_s,
-        bpm=analysis.grid.tempo.bpm,
-        beat_offset_s=analysis.grid.offset_s,
-        sections=[section_body(section) for section in analysis.sections],
+        duration_s=summary.duration_s,
+        bpm=summary.bpm,
+        beat_offset_s=summary.beat_offset_s,
+        sections=[section_body(section) for section in summary.sections],
     )

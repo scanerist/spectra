@@ -1,4 +1,3 @@
-import asyncio
 from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, File, Response, UploadFile, status
@@ -6,7 +5,6 @@ from fastapi.requests import HTTPConnection
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from spectra.analysis.domain.track_analysis import TrackAnalysis
 from spectra.gateway.errors import (
     FAILURE_CODES,
     ApiError,
@@ -16,10 +14,9 @@ from spectra.gateway.errors import (
 from spectra.gateway.events import EVENT_STREAM_HEADERS, EVENT_STREAM_MEDIA_TYPE, status_events
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
-from spectra.gateway.timeline_codec import encode_timeline
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
-from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId
+from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackSummary
 
 TRACK_SERVICE_STATE: Final = "track_service"
 UPLOAD_CHUNK_BYTES: Final = 1 << 20
@@ -60,11 +57,11 @@ async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     return b"".join(chunks)
 
 
-async def ready_analysis(service: TrackService, track_id: str) -> tuple[TrackId, TrackAnalysis]:
+async def ready_summary(service: TrackService, track_id: str) -> tuple[TrackId, TrackSummary]:
     track = TrackId(track_id)
     match await service.status(track):
-        case Ready(analysis=analysis):
-            return track, analysis
+        case Ready(summary=summary):
+            return track, summary
         case Analysing():
             raise ApiError(ErrorCode.NOT_READY, "the analysis of this track is still running")
         case Failed(code=code, message=message):
@@ -88,8 +85,8 @@ def create_router() -> APIRouter:
 
     @router.get("/tracks/{track_id}")
     async def get_track(track_id: str, service: Service) -> TrackInfo:
-        track, analysis = await ready_analysis(service, track_id)
-        return track_info(track, analysis)
+        track, summary = await ready_summary(service, track_id)
+        return track_info(track, summary)
 
     @router.get("/tracks/{track_id}/events")
     async def track_events(track_id: str, service: Service) -> StreamingResponse:
@@ -103,8 +100,7 @@ def create_router() -> APIRouter:
 
     @router.get("/tracks/{track_id}/timeline")
     async def get_timeline(track_id: str, service: Service) -> Response:
-        _, analysis = await ready_analysis(service, track_id)
-        timeline = await asyncio.to_thread(encode_timeline, analysis)
-        return Response(content=timeline, media_type=TIMELINE_MEDIA_TYPE)
+        track, _ = await ready_summary(service, track_id)
+        return Response(content=await service.timeline(track), media_type=TIMELINE_MEDIA_TYPE)
 
     return router

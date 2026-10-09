@@ -11,6 +11,7 @@ from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.settings import LogLevel, Settings
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
+from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.adapters.memory import (
     InMemoryBlobStore,
@@ -33,7 +34,9 @@ def create_app(settings: Settings) -> FastAPI:
     )
     blobs = InMemoryBlobStore()
     jobs = InMemoryJobQueue()
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs, jobs=jobs)
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=encode_timeline
+    )
     service = TrackService(
         decoder=decoder,
         board=board,

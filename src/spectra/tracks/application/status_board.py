@@ -22,6 +22,12 @@ class StatusBoard:
     async def analysing_count(self) -> int:
         return await self._store.analysing_count()
 
+    async def forget(self, track_id: TrackId) -> None:
+        await self._store.delete(track_id)
+
+    async def evict_settled(self, *, keep: TrackId) -> list[TrackId]:
+        return await self._store.evict_settled(keep=keep)
+
     async def record(self, track_id: TrackId, status: TrackStatus) -> None:
         await self._store.save(track_id, status)
         await self._feed.publish(track_id, status)

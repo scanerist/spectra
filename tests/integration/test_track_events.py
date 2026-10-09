@@ -9,7 +9,7 @@ from spectra.gateway.routes import create_router, install_track_service
 from spectra.tracks.adapters.memory import InMemoryBlobStore
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
+from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId, TrackSummary
 from tests.contract.timeline_fixture import golden_analysis
 from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, record_now
 from tests.sse import parse_events
@@ -46,7 +46,7 @@ def test_progress_event_carries_stage_and_progress() -> None:
 def test_ready_track_streams_one_ready_event_with_its_metadata(
     client: TestClient, board: StatusBoard
 ) -> None:
-    record_now(board, TRACK, Ready(analysis=golden_analysis()))
+    record_now(board, TRACK, Ready(summary=TrackSummary.of_analysis(golden_analysis())))
     response = client.get(f"/tracks/{TRACK.value}/events")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")

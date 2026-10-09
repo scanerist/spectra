@@ -6,11 +6,12 @@ from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.application.ports import AnalysisJob, BlobStore, JobQueue
 from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.domain.blobs import upload_key
+from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.errors import (
     AnalysisQueueFullError,
     EmptyUploadError,
     FileTooLargeError,
+    TrackNotFoundError,
     TrackTooLongError,
 )
 from spectra.tracks.domain.track import Analysing, Failed, TrackId, TrackStatus
@@ -72,6 +73,13 @@ class TrackService:
 
     async def status(self, track_id: TrackId) -> TrackStatus:
         return await self._board.current(track_id)
+
+    async def timeline(self, track_id: TrackId) -> bytes:
+        timeline = await self._blobs.get(timeline_key(track_id))
+        if timeline is None:
+            await self._board.forget(track_id)
+            raise TrackNotFoundError(f"the timeline of track {track_id.value} is gone")
+        return timeline
 
     def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
         return self._board.watch(track_id)

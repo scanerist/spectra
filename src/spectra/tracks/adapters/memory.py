@@ -21,16 +21,19 @@ class InMemoryTrackStore:
     async def save(self, track_id: TrackId, status: TrackStatus) -> None:
         self._statuses[track_id] = status
         self._statuses.move_to_end(track_id)
-        self._evict(keep=track_id)
+
+    async def delete(self, track_id: TrackId) -> None:
+        self._statuses.pop(track_id, None)
 
     async def analysing_count(self) -> int:
         return sum(not is_final(status) for status in self._statuses.values())
 
-    def _evict(self, *, keep: TrackId) -> None:
+    async def evict_settled(self, *, keep: TrackId) -> list[TrackId]:
         settled = [key for key, value in self._statuses.items() if is_final(value) and key != keep]
-        excess = len(self._statuses) - self._capacity
-        for track_id in settled[: max(excess, 0)]:
+        evicted = settled[: max(len(self._statuses) - self._capacity, 0)]
+        for track_id in evicted:
             del self._statuses[track_id]
+        return evicted
 
 
 class InMemoryProgressFeed:

@@ -7,7 +7,7 @@ from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.adapters.memory import InMemoryBlobStore, InMemoryJobQueue
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.worker import UPLOAD_GONE, AnalysisWorker
-from spectra.tracks.domain.blobs import upload_key
+from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.track import (
     Analysing,
     Failed,
@@ -16,7 +16,7 @@ from spectra.tracks.domain.track import (
     TrackId,
     TrackStatus,
 )
-from tests.fakes import FakeDecoder, memory_board
+from tests.fakes import FakeDecoder, fake_timeline, memory_board
 from tests.signals import kick_train, signal_of, silence
 
 TRACK = TrackId.of_content(b"track")
@@ -28,7 +28,9 @@ async def statuses_of(
     board = memory_board()
     store = blobs or InMemoryBlobStore()
     jobs = InMemoryJobQueue()
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=store, jobs=jobs)
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=store, jobs=jobs, encoder=fake_timeline
+    )
     await board.record(TRACK, Analysing.at(AnalysisStage.DECODING))
     if blobs is None:
         await store.put(upload_key(TRACK), b"track")
@@ -51,7 +53,7 @@ async def test_worker_reports_every_stage_then_ready() -> None:
     stages = [status.stage for status in seen if isinstance(status, Analysing)]
     assert stages == ["decoding", "spectrum", "tempo", "structure"]
     assert isinstance(seen[-1], Ready)
-    assert seen[-1].analysis.grid.tempo.bpm == pytest.approx(128.0, abs=0.5)
+    assert seen[-1].summary.bpm == pytest.approx(128.0, abs=0.5)
 
 
 @pytest.mark.anyio
@@ -73,7 +75,9 @@ async def test_close_fails_queued_jobs_instead_of_running_them() -> None:
     blobs = InMemoryBlobStore()
     decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
     jobs = InMemoryJobQueue()
-    worker = AnalysisWorker(decoder=decoder, board=board, blobs=blobs, jobs=jobs)
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+    )
     queued = [TrackId.of_content(name) for name in (b"one", b"two")]
     for track in queued:
         await board.record(track, Analysing.at(AnalysisStage.DECODING))
@@ -114,3 +118,42 @@ async def test_upload_is_deleted_when_the_analysis_fails() -> None:
 async def test_missing_upload_fails_the_track() -> None:
     seen = await statuses_of(FakeDecoder(), InMemoryBlobStore())
     assert seen[-1] == UPLOAD_GONE
+
+
+@pytest.mark.anyio
+async def test_timeline_is_stored_before_the_track_is_ready() -> None:
+    blobs = InMemoryBlobStore()
+    await blobs.put(upload_key(TRACK), b"track")
+    await statuses_of(FakeDecoder(signal=signal_of(kick_train(128.0, 12.0))), blobs)
+    timeline = await blobs.get(timeline_key(TRACK))
+    assert timeline is not None
+    assert timeline.startswith(b"timeline of ")
+
+
+@pytest.mark.anyio
+async def test_evicted_tracks_lose_their_timelines() -> None:
+    board = memory_board(capacity=1)
+    blobs = InMemoryBlobStore()
+    jobs = InMemoryJobQueue()
+    decoder = FakeDecoder(signal=signal_of(kick_train(128.0, 12.0)))
+    worker = AnalysisWorker(
+        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=fake_timeline
+    )
+    first, second = TrackId.of_content(b"first"), TrackId.of_content(b"second")
+    for track in (first, second):
+        await board.record(track, Analysing.at(AnalysisStage.DECODING))
+        await blobs.put(upload_key(track), b"audio")
+        await jobs.enqueue(AnalysisJob(track_id=track))
+
+    async def stop_after_second() -> None:
+        async for _ in board.watch(second):
+            pass
+        await worker.close()
+
+    async with asyncio.TaskGroup() as group:
+        group.create_task(stop_after_second())
+        group.create_task(worker.run())
+    assert await board.find(first) is None
+    assert await blobs.get(timeline_key(first)) is None
+    assert isinstance(await board.current(second), Ready)
+    assert await blobs.get(timeline_key(second)) is not None

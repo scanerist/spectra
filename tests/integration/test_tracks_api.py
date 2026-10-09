@@ -1,3 +1,4 @@
+import asyncio
 from typing import Final
 
 import pytest
@@ -12,7 +13,15 @@ from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.adapters.memory import InMemoryBlobStore
 from spectra.tracks.application.service import TrackService, UploadLimits
-from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
+from spectra.tracks.domain.blobs import timeline_key
+from spectra.tracks.domain.track import (
+    Analysing,
+    Failed,
+    FailureCode,
+    Ready,
+    TrackId,
+    TrackSummary,
+)
 from tests.contract.timeline_fixture import golden_analysis
 from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, record_now
 
@@ -24,10 +33,11 @@ class Api:
     def __init__(self, *, decoder: FakeDecoder | None = None) -> None:
         self.board = memory_board()
         self.jobs = FakeJobQueue()
+        self.blobs = InMemoryBlobStore()
         service = TrackService(
             decoder=decoder or FakeDecoder(),
             board=self.board,
-            blobs=InMemoryBlobStore(),
+            blobs=self.blobs,
             jobs=self.jobs,
             limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
         )
@@ -162,7 +172,7 @@ def test_failed_analysis_returns_its_error(api: Api, code: FailureCode, http_sta
 def test_ready_track_metadata_matches_the_contract(api: Api) -> None:
     track = TrackId.of_content(DATA)
     analysis = golden_analysis()
-    record_now(api.board, track, Ready(analysis=analysis))
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(analysis)))
     response = api.client.get(f"/tracks/{track.value}")
     assert response.status_code == 200
     assert response.json() == {
@@ -177,8 +187,18 @@ def test_ready_track_metadata_matches_the_contract(api: Api) -> None:
 def test_ready_track_timeline_is_the_encoded_analysis(api: Api) -> None:
     track = TrackId.of_content(DATA)
     analysis = golden_analysis()
-    record_now(api.board, track, Ready(analysis=analysis))
+    asyncio.run(api.blobs.put(timeline_key(track), encode_timeline(analysis)))
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(analysis)))
     response = api.client.get(f"/tracks/{track.value}/timeline")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
     assert response.content == encode_timeline(analysis)
+
+
+def test_ready_track_without_a_timeline_is_forgotten(api: Api) -> None:
+    track = TrackId.of_content(DATA)
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(golden_analysis())))
+    response = api.client.get(f"/tracks/{track.value}/timeline")
+    assert response.status_code == 404
+    assert response.json()["error"] == "track_not_found"
+    assert api.client.get(f"/tracks/{track.value}").status_code == 404

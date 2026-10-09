@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.14.0",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "redis>=8.1.0",
     "soundfile>=0.14.0",
     "soxr>=1.1.0",
     "sqlalchemy[asyncio]>=2.1.4",
@@ -144,4 +145,4 @@ source_modules = [
     "spectra.tracks.application",
     "spectra.tracks.domain",
 ]
-forbidden_modules = ["alembic", "asyncpg", "boto3", "botocore", "sqlalchemy"]
+forbidden_modules = ["alembic", "asyncpg", "boto3", "botocore", "redis", "sqlalchemy"]

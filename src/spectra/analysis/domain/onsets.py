@@ -1,3 +1,4 @@
+import math
 from typing import Final
 
 import numpy as np
@@ -33,3 +34,7 @@ def onset_envelope(
     flux[:WINDOW_LEAD_FRAMES] = 0.0
     peak = float(flux.max())
     return np.asarray(flux / peak if peak > 0.0 else flux, dtype=np.float32)
+
+
+def upper_onset_envelope(band_power: Float32Array) -> Float32Array:
+    return onset_envelope(band_power, min_freq_hz=ONSET_MAX_FREQ_HZ, max_freq_hz=math.inf)

@@ -16,7 +16,7 @@ from spectra.analysis.domain.errors import (
     UnanalysableSignalError,
 )
 from spectra.analysis.domain.frame_levels import LEVEL_COUNT, frame_levels
-from spectra.analysis.domain.onsets import onset_envelope
+from spectra.analysis.domain.onsets import onset_envelope, upper_onset_envelope
 from spectra.analysis.domain.peaks import Peaks
 from spectra.analysis.domain.ranges import Float32Array, read_only_float32, require_array_in_range
 from spectra.analysis.domain.sections import Section, find_sections, require_contiguous
@@ -97,7 +97,9 @@ def analyse_signal(signal: AudioSignal, *, on_stage: StageListener = ignore_stag
     levels = frame_levels(power, bands)
     on_stage(AnalysisStage.TEMPO)
     pulses = onset_envelope(power)
-    tempo = estimate_tempo(pulses, frame_rate_hz=FRAME_RATE_HZ)
+    tempo = estimate_tempo(
+        pulses, upper_envelope=upper_onset_envelope(power), frame_rate_hz=FRAME_RATE_HZ
+    )
     grid = locate_beat_grid(pulses, bands, tempo=tempo, frame_rate_hz=FRAME_RATE_HZ)
     on_stage(AnalysisStage.STRUCTURE)
     sections = find_sections(power, bands, grid=grid, duration_s=signal.duration_s)

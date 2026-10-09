@@ -33,8 +33,11 @@ class GridFit:
     phase_frames: float
 
 
-def estimate_tempo(envelope: Float32Array, *, frame_rate_hz: float) -> Tempo:
+def estimate_tempo(
+    envelope: Float32Array, *, upper_envelope: Float32Array, frame_rate_hz: float
+) -> Tempo:
     pulses = detrended(envelope, frame_rate_hz=frame_rate_hz)
+    upper_pulses = detrended(upper_envelope, frame_rate_hz=frame_rate_hz)
     if not pulses.any():
         raise TempoNotFoundError("the onset envelope has no pulses to measure a tempo from")
     correlation = autocorrelation(pulses)
@@ -47,11 +50,17 @@ def estimate_tempo(envelope: Float32Array, *, frame_rate_hz: float) -> Tempo:
     best = max(
         candidates,
         key=lambda bpm: (
-            fit_grid(pulses, period_frames=period_frames(bpm, frame_rate_hz)).salience
+            octave_score((pulses, upper_pulses), period=period_frames(bpm, frame_rate_hz))
             * tempo_prior(bpm)
         ),
     )
     return Tempo(bpm=best)
+
+
+def octave_score(envelopes: tuple[Float64Array, ...], *, period: float) -> float:
+    return sum(
+        max(fit_grid(envelope, period_frames=period).salience, 0.0) for envelope in envelopes
+    )
 
 
 def detrended(envelope: Float32Array, *, frame_rate_hz: float) -> Float64Array:

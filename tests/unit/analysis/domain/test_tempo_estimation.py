@@ -1,9 +1,11 @@
+import math
+
 import numpy as np
 import pytest
 
 from spectra.analysis.domain.bands import fold_to_bands
 from spectra.analysis.domain.errors import TempoNotFoundError
-from spectra.analysis.domain.onsets import onset_envelope
+from spectra.analysis.domain.onsets import onset_envelope, upper_onset_envelope
 from spectra.analysis.domain.ranges import Float32Array
 from spectra.analysis.domain.stft import FRAME_RATE_HZ, stft_chunks
 from spectra.analysis.domain.tempo_estimation import (
@@ -18,8 +20,12 @@ TOLERANCE_BPM = 0.5
 
 
 def tempo_of(samples: Float32Array) -> float:
-    envelope = onset_envelope(fold_to_bands(stft_chunks(signal_of(samples))))
-    return estimate_tempo(envelope, frame_rate_hz=FRAME_RATE_HZ).bpm
+    power = fold_to_bands(stft_chunks(signal_of(samples)))
+    return estimate_tempo(
+        onset_envelope(power),
+        upper_envelope=upper_onset_envelope(power),
+        frame_rate_hz=FRAME_RATE_HZ,
+    ).bpm
 
 
 @pytest.mark.parametrize("bpm", [90.0, 122.0, 128.0, 140.0, 174.0], ids=lambda b: f"{b:g}")
@@ -49,6 +55,25 @@ def test_offbeat_hats_do_not_double_the_tempo() -> None:
     hats = hats - np.convolve(hats, np.ones(8) / 8, mode="same").astype(np.float32)
     samples = kick_train(128.0, 30.0) + hats
     assert tempo_of(samples) == pytest.approx(128.0, abs=TOLERANCE_BPM)
+
+
+def test_half_time_drums_with_hats_on_every_beat_keep_the_full_tempo() -> None:
+    bpm = 145.0
+    beat_s = 60.0 / bpm
+    duration_s = 30.0
+    kicks = kick_train(bpm / 4.0, duration_s)
+    snares = silence(duration_s)
+    hats = silence(duration_s)
+    snare = noise(0.12, amplitude=0.4, seed=1) * np.exp(-np.arange(5_292) / 1_500).astype(
+        np.float32
+    )
+    hat = np.diff(noise(0.03, amplitude=0.25, seed=2), prepend=np.float32(0.0))
+    for beat in range(math.floor(duration_s / beat_s)):
+        start = round(beat * beat_s * 44_100)
+        if beat % 4 == 2:
+            snares[start : start + snare.size] += snare[: snares.size - start]
+        hats[start : start + hat.size] += hat[: hats.size - start]
+    assert tempo_of(kicks + snares + hats) == pytest.approx(bpm, abs=TOLERANCE_BPM)
 
 
 def test_leading_silence_does_not_change_the_tempo() -> None:

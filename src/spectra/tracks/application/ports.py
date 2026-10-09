@@ -46,7 +46,7 @@ class TrackStore(Protocol):
 
 
 class TrackExpiry(Protocol):
-    async def stale_tracks(self, *, unseen_for_s: float, limit: int) -> list[TrackId]: ...
+    async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]: ...
 
 
 class ProgressFeed(Protocol):

@@ -96,15 +96,22 @@ class PostgresTrackStore:
     async def evict_settled(self, *, keep: TrackId) -> list[TrackId]:  # noqa: ARG002
         return []
 
-    async def stale_tracks(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
+    async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
         cutoff = func.now() - literal(timedelta(seconds=unseen_for_s), Interval())
-        statement = (
+        oldest = (
             select(TRACKS.c.track_id)
             .where(TRACKS.c.last_seen_at < cutoff)
             .order_by(TRACKS.c.last_seen_at)
             .limit(limit)
+            .with_for_update(skip_locked=True)
         )
-        async with self._engine.connect() as connection:
+        statement = (
+            delete_rows(TRACKS)
+            .where(TRACKS.c.track_id.in_(oldest.scalar_subquery()))
+            .where(TRACKS.c.last_seen_at < cutoff)
+            .returning(TRACKS.c.track_id)
+        )
+        async with self._engine.begin() as connection:
             rows = (await connection.execute(statement)).scalars().all()
         return [TrackId(track_id) for track_id in rows]
 

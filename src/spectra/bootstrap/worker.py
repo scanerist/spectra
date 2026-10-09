@@ -21,7 +21,6 @@ async def serve(settings: Settings, hosted: HostedSettings, *, stop: asyncio.Eve
         worker = analysis_worker(parts)
         janitor = Janitor(
             expiry=adapters.store,
-            board=parts.board,
             blobs=parts.blobs,
             retention_s=settings.retention_days * DAY_S,
         )

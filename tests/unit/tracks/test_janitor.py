@@ -27,7 +27,7 @@ async def janitor_for(
         await blobs.put(timeline_key(track_id), b"timeline")
         await blobs.put(upload_key(track_id), b"upload")
     expiry = FakeTrackExpiry(store, unseen_s=unseen_s)
-    janitor = Janitor(expiry=expiry, board=board, blobs=blobs, retention_s=RETENTION_S)
+    janitor = Janitor(expiry=expiry, blobs=blobs, retention_s=RETENTION_S)
     return janitor, board, blobs, expiry
 
 

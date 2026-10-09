@@ -126,7 +126,7 @@ async def test_the_schema_downgrades_to_nothing(engine: AsyncEngine) -> None:
         assert tables.scalar_one() is None
 
 
-async def test_only_tracks_unseen_for_long_enough_are_stale(
+async def test_only_tracks_unseen_for_long_enough_expire(
     engine: AsyncEngine, store: PostgresTrackStore
 ) -> None:
     for name in ("old", "new"):
@@ -134,14 +134,17 @@ async def test_only_tracks_unseen_for_long_enough_are_stale(
     await backdate(engine, track("old"), datetime.now(UTC) - timedelta(days=31))
     await backdate(engine, track("new"), datetime.now(UTC) - timedelta(days=29))
     month_s = timedelta(days=30).total_seconds()
-    assert await store.stale_tracks(unseen_for_s=month_s, limit=10) == [track("old")]
+    assert await store.expire_unseen(unseen_for_s=month_s, limit=10) == [track("old")]
+    assert await store.find(track("old")) is None
+    assert await store.find(track("new")) == READY
 
 
-async def test_stale_tracks_come_oldest_first_up_to_the_limit(
+async def test_the_oldest_tracks_expire_first_up_to_the_limit(
     engine: AsyncEngine, store: PostgresTrackStore
 ) -> None:
     for days, name in enumerate(("a", "b", "c"), start=40):
         await store.save(track(name), READY)
         await backdate(engine, track(name), datetime.now(UTC) - timedelta(days=days))
-    stale = await store.stale_tracks(unseen_for_s=timedelta(days=30).total_seconds(), limit=2)
-    assert stale == [track("c"), track("b")]
+    expired = await store.expire_unseen(unseen_for_s=timedelta(days=30).total_seconds(), limit=2)
+    assert set(expired) == {track("c"), track("b")}
+    assert await store.find(track("a")) == READY

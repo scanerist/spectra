@@ -86,15 +86,17 @@ class FakeTrackExpiry:
         self._unseen_s = unseen_s
         self.limits: list[int] = []
 
-    async def stale_tracks(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
+    async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
         self.limits.append(limit)
         oldest_first = sorted(self._unseen_s.items(), key=lambda item: -item[1])
         stale = [
             track_id
             for track_id, unseen_s in oldest_first
             if unseen_s > unseen_for_s and await self._store.find(track_id) is not None
-        ]
-        return stale[:limit]
+        ][:limit]
+        for track_id in stale:
+            await self._store.delete(track_id)
+        return stale
 
 
 def memory_board(*, capacity: int = 8) -> StatusBoard:

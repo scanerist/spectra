@@ -80,14 +80,9 @@ services:
 
   caddy:
     <<: *service
-    image: caddy:2.10.2-alpine
-    command:
-      - caddy
-      - reverse-proxy
-      - --from
-      - ${SPECTRA_DOMAIN:?set SPECTRA_DOMAIN in the production environment on GitHub}
-      - --to
-      - api:8000
+    image: ${SPECTRA_WEB_IMAGE:?set SPECTRA_WEB_IMAGE in the production environment on GitHub}
+    environment:
+      SPECTRA_DOMAIN: ${SPECTRA_DOMAIN:?set SPECTRA_DOMAIN in the production environment on GitHub}
     ports:
       - "${SPECTRA_HTTP_PORT:?set SPECTRA_HTTP_PORT in the production environment on GitHub}:80"
       - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443"

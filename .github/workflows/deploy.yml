@@ -33,7 +33,9 @@ jobs:
             fi
           done
       - uses: actions/checkout@v7
-      - run: echo "SPECTRA_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+      - run: |
+          echo "SPECTRA_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "SPECTRA_WEB_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/web:${GITHUB_SHA}" >> "$GITHUB_ENV"
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -47,6 +49,14 @@ jobs:
           tags: ${{ env.SPECTRA_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v7
+        with:
+          context: web
+          push: true
+          tags: ${{ env.SPECTRA_WEB_IMAGE }}
+          build-args: VITE_REPOSITORY_URL=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
       - name: configure ssh
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -75,7 +85,7 @@ jobs:
         run: |
           environment_file="$RUNNER_TEMP/spectra.env"
           install -m 600 /dev/null "$environment_file"
-          for name in SPECTRA_IMAGE SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT \
+          for name in SPECTRA_IMAGE SPECTRA_WEB_IMAGE SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT \
             SPECTRA_LOG_LEVEL SPECTRA_API_MEMORY_LIMIT SPECTRA_WORKER_MEMORY_LIMIT SPECTRA_UPLOADS_PER_HOUR \
             SPECTRA_GRAFANA_BIND_ADDRESS SPECTRA_GRAFANA_PORT SPECTRA_METRICS_RETENTION GRAFANA_ADMIN_PASSWORD \
             POSTGRES_PASSWORD REDIS_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY; do

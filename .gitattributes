@@ -10,3 +10,6 @@ web/**/*.html text eol=lf
 web/**/*.json text eol=lf
 web/**/*.txt text eol=lf
 web/**/*.woff2 binary
+web/Caddyfile text eol=lf
+web/Dockerfile text eol=lf
+web/.dockerignore text eol=lf

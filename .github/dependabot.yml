@@ -25,3 +25,7 @@ updates:
     groups:
       web:
         patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /web
+    schedule:
+      interval: weekly

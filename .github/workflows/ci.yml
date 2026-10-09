@@ -112,6 +112,7 @@ jobs:
     env:
       COMPOSE_FILE: compose.prod.yaml
       SPECTRA_IMAGE: spectra:local
+      SPECTRA_WEB_IMAGE: spectra-web:local
       SPECTRA_DOMAIN: localhost
       SPECTRA_HTTP_PORT: 8080
       SPECTRA_HTTPS_PORT: 8443
@@ -128,6 +129,13 @@ jobs:
           tags: spectra:local
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v7
+        with:
+          context: web
+          load: true
+          tags: spectra-web:local
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
       - run: cp .env.example .env
       - run: docker compose --file compose.yaml config --quiet
       - run: docker compose up --detach --wait
@@ -135,6 +143,10 @@ jobs:
       - run: docker compose exec -T api spectra-smoke
       - run: test "$(docker compose ps --quiet --status running worker)" != ""
       - run: curl --fail --silent --show-error --insecure https://localhost:8443/ready
+      - name: check that caddy serves the web client
+        run: |
+          curl --fail --silent --show-error --insecure https://localhost:8443/ | grep -q '<title>spectra</title>'
+          curl --fail --silent --show-error --insecure --head https://localhost:8443/ | grep -qi '^content-security-policy:'
       - name: check that prometheus scrapes every target
         run: |
           query='http://localhost:9090/api/v1/query?query=min(up)'

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
@@ -11,7 +12,13 @@ class AudioFormat(StrEnum):
     OGG = "ogg"
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AudioProbe:
+    audio_format: AudioFormat
+    duration_s: float
+
+
 class AudioDecoder(Protocol):
-    def probe(self, data: bytes) -> AudioFormat: ...
+    def probe(self, data: bytes) -> AudioProbe: ...
 
     def decode(self, data: bytes) -> AudioSignal: ...

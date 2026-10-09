@@ -4,7 +4,7 @@ from spectra.analysis.application.ports import AudioDecoder
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.application.ports import AnalysisJob, JobQueue
 from spectra.tracks.application.registry import TrackRegistry
-from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError
+from spectra.tracks.domain.errors import EmptyUploadError, FileTooLargeError, TrackTooLongError
 from spectra.tracks.domain.track import Analysing, Failed, TrackId, TrackStatus
 
 
@@ -16,11 +16,13 @@ class TrackService:
         registry: TrackRegistry,
         jobs: JobQueue,
         max_upload_bytes: int,
+        max_duration_s: float,
     ) -> None:
         self._decoder = decoder
         self._registry = registry
         self._jobs = jobs
         self._max_upload_bytes = max_upload_bytes
+        self._max_duration_s = max_duration_s
 
     @property
     def max_upload_bytes(self) -> int:
@@ -31,7 +33,12 @@ class TrackService:
             raise EmptyUploadError("the upload is empty")
         if len(data) > self._max_upload_bytes:
             raise FileTooLargeError(f"the upload is larger than {self._max_upload_bytes} bytes")
-        self._decoder.probe(data)
+        probe = self._decoder.probe(data)
+        if probe.duration_s > self._max_duration_s:
+            limit_s = self._max_duration_s
+            raise TrackTooLongError(
+                f"the track lasts {probe.duration_s:.0f} s, over {limit_s:.0f} s"
+            )
         track_id = TrackId.of_content(data)
         known = self._registry.find(track_id)
         if known is not None and not isinstance(known, Failed):

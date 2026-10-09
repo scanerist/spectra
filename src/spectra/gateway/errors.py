@@ -17,6 +17,7 @@ from spectra.tracks.domain.errors import (
     FileTooLargeError,
     InvalidTrackIdError,
     TrackNotFoundError,
+    TrackTooLongError,
 )
 from spectra.tracks.domain.track import FailureCode
 
@@ -52,6 +53,7 @@ FAILURE_CODES: Final[Mapping[FailureCode, ErrorCode]] = {
 DOMAIN_ERRORS: Final[Mapping[type[Exception], ErrorCode]] = {
     EmptyUploadError: ErrorCode.NO_FILE,
     FileTooLargeError: ErrorCode.FILE_TOO_LARGE,
+    TrackTooLongError: ErrorCode.FILE_TOO_LARGE,
     UnsupportedFormatError: ErrorCode.UNSUPPORTED_FORMAT,
     TrackNotFoundError: ErrorCode.TRACK_NOT_FOUND,
     InvalidTrackIdError: ErrorCode.TRACK_NOT_FOUND,

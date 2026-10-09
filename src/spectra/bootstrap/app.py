@@ -29,6 +29,7 @@ def create_app(settings: Settings) -> FastAPI:
         registry=registry,
         jobs=worker,
         max_upload_bytes=settings.max_upload_bytes,
+        max_duration_s=settings.max_duration_s,
     )
 
     @asynccontextmanager

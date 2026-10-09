@@ -6,7 +6,7 @@ import numpy as np
 import soundfile
 import soxr
 
-from spectra.analysis.application.ports import AudioFormat
+from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.errors import UndecodableAudioError, UnsupportedFormatError
 from spectra.analysis.domain.signal import ANALYSIS_SAMPLE_RATE_HZ, AudioSignal
 
@@ -22,15 +22,16 @@ RESAMPLE_QUALITY: Final = "HQ"
 
 
 class SoundfileDecoder:
-    def probe(self, data: bytes) -> AudioFormat:
+    def probe(self, data: bytes) -> AudioProbe:
         try:
-            container = str(soundfile.info(io.BytesIO(data)).format)
+            info = soundfile.info(io.BytesIO(data))
         except soundfile.SoundFileError as error:
             raise UnsupportedFormatError("expected mp3, wav, flac or ogg") from error
+        container = str(info.format)
         audio_format = CONTAINER_FORMATS.get(container)
         if audio_format is None:
             raise UnsupportedFormatError(f"expected mp3, wav, flac or ogg, got {container.lower()}")
-        return audio_format
+        return AudioProbe(audio_format=audio_format, duration_s=float(info.duration))
 
     def decode(self, data: bytes) -> AudioSignal:
         self.probe(data)

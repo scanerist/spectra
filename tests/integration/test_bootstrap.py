@@ -14,6 +14,7 @@ def test_settings_defaults() -> None:
     assert settings.log_level is LogLevel.INFO
     assert settings.max_upload_bytes == 256 * 1024 * 1024
     assert settings.max_tracks == 8
+    assert settings.max_duration_s == 1_800.0
 
 
 def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -36,8 +37,16 @@ def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -
         ("SPECTRA_LOG_LEVEL", "chatty"),
         ("SPECTRA_MAX_UPLOAD_BYTES", "0"),
         ("SPECTRA_MAX_TRACKS", "0"),
+        ("SPECTRA_MAX_DURATION_S", "0"),
     ],
-    ids=["port-zero", "port-too-high", "log-level-unknown", "no-upload", "no-tracks"],
+    ids=[
+        "port-zero",
+        "port-too-high",
+        "log-level-unknown",
+        "no-upload",
+        "no-tracks",
+        "no-duration",
+    ],
 )
 def test_settings_reject_invalid_values(
     monkeypatch: pytest.MonkeyPatch, variable: str, value: str

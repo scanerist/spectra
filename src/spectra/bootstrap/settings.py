@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     log_level: LogLevel = LogLevel.INFO
     max_upload_bytes: int = Field(default=256 * 1024 * 1024, ge=1)
     max_tracks: int = Field(default=8, ge=1)
+    max_duration_s: float = Field(default=1_800.0, gt=0.0, allow_inf_nan=False)
 
     @field_validator("log_level", mode="before")
     @classmethod

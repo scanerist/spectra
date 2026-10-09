@@ -29,6 +29,7 @@ class Api:
             registry=self.registry,
             jobs=self.jobs,
             max_upload_bytes=LIMIT_BYTES,
+            max_duration_s=600.0,
         )
         app = FastAPI()
         app.include_router(create_router())
@@ -91,6 +92,14 @@ def test_upload_over_the_limit_is_file_too_large(api: Api) -> None:
 def test_declared_oversized_body_is_refused_before_the_app_reads_it(api: Api) -> None:
     big = b"x" * (LIMIT_BYTES + MULTIPART_OVERHEAD_BYTES + 1)
     response = api.client.post("/tracks", files={"file": ("t.wav", big, "audio/wav")})
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert api.jobs.jobs == []
+
+
+def test_track_over_the_duration_limit_is_file_too_large() -> None:
+    api = Api(decoder=FakeDecoder(duration_s=601.0))
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
     assert api.jobs.jobs == []

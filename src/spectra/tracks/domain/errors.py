@@ -16,3 +16,7 @@ class EmptyUploadError(TracksError):
 
 class FileTooLargeError(TracksError):
     pass
+
+
+class TrackTooLongError(TracksError):
+    pass

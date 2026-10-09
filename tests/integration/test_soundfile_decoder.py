@@ -34,7 +34,9 @@ def test_probe_recognises_supported_containers(
     decoder: AudioDecoder, container: str, audio_format: AudioFormat
 ) -> None:
     data = encoded(tone(1_000.0, 1.0, 48_000), 48_000, container)
-    assert decoder.probe(data) is audio_format
+    probe = decoder.probe(data)
+    assert probe.audio_format is audio_format
+    assert probe.duration_s == pytest.approx(1.0, abs=0.1)
 
 
 @pytest.mark.parametrize(("container", "audio_format"), CONTAINERS, ids=CONTAINER_IDS)
@@ -80,7 +82,7 @@ def test_unsupported_content_is_rejected_by_probe_and_decode(
 def test_truncated_flac_is_recognised_but_undecodable(decoder: AudioDecoder) -> None:
     data = encoded(tone(440.0, 3.0, 48_000), 48_000, "FLAC")
     truncated = data[: len(data) // 2]
-    assert decoder.probe(truncated) is AudioFormat.FLAC
+    assert decoder.probe(truncated).audio_format is AudioFormat.FLAC
     with pytest.raises(UndecodableAudioError):
         decoder.decode(truncated)
 

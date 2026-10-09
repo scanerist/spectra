@@ -24,7 +24,11 @@ def registry() -> TrackRegistry:
 @pytest.fixture
 def client(registry: TrackRegistry) -> TestClient:
     service = TrackService(
-        decoder=FakeDecoder(), registry=registry, jobs=FakeJobQueue(), max_upload_bytes=100
+        decoder=FakeDecoder(),
+        registry=registry,
+        jobs=FakeJobQueue(),
+        max_upload_bytes=100,
+        max_duration_s=600.0,
     )
     app = FastAPI()
     app.include_router(create_router())

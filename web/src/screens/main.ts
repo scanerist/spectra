@@ -1,10 +1,17 @@
 import { element } from "../app/dom";
 import { bpmText, clockText } from "../app/format";
 import type { LoadedTrack } from "../app/session";
-import { beatAt, sectionAt } from "../contract/lookup";
+import { beatAt, frameAt, sectionAt } from "../contract/lookup";
+import { bandsOf } from "../contract/timeline";
+import { pixelView } from "../pixel/canvas";
+import { bandHistory } from "../view/bands";
+import { drawDecomposition, drawRidge, drawSignal, drawSpectrum } from "./main-views";
 import { SECTION_LABELS } from "./sections";
 
 export const SEEK_STEP_S = 10;
+export const RIDGE_ROWS = 28;
+export const HISTORY_STEP_FRAMES = 3;
+const SIGNAL_SIZE = 2048;
 
 export interface Moment {
   readonly timeS: number;
@@ -18,29 +25,36 @@ export interface MainScreen {
   draw(moment: Moment): void;
 }
 
-export function mountMain(
-  root: Document,
-  onSeek: (timeS: number) => void,
-  currentTimeS: () => number,
-): MainScreen {
+export interface MainControls {
+  readonly seek: (timeS: number) => void;
+  readonly timeS: () => number;
+  readonly waveform: (samples: Float32Array<ArrayBuffer>) => boolean;
+}
+
+export function mountMain(root: Document, controls: MainControls): MainScreen {
   const bpm = element(root, "#bpm", HTMLElement);
   const beats = Array.from(element(root, "#beats", HTMLDivElement).children);
   const strip = element(root, "#sections", HTMLDivElement);
   const playhead = element(root, "#playhead", HTMLDivElement);
+  const ridge = pixelView(element(root, "#c-ridge", HTMLCanvasElement), 3);
+  const signal = pixelView(element(root, "#c-signal", HTMLCanvasElement), 2);
+  const decomposition = pixelView(element(root, "#c-decomposition", HTMLCanvasElement), 2);
+  const spectrum = pixelView(element(root, "#c-spectrum", HTMLCanvasElement), 2);
+  const samples = new Float32Array(SIGNAL_SIZE);
   let track: LoadedTrack<AudioBuffer> | null = null;
   let spans: HTMLSpanElement[] = [];
 
   strip.addEventListener("click", (event) => {
     if (track !== null) {
       const box = strip.getBoundingClientRect();
-      onSeek(((event.clientX - box.left) / box.width) * track.info.durationS);
+      controls.seek(((event.clientX - box.left) / box.width) * track.info.durationS);
     }
   });
   strip.addEventListener("keydown", (event) => {
     const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (direction !== 0) {
       event.preventDefault();
-      onSeek(currentTimeS() + direction * SEEK_STEP_S);
+      controls.seek(controls.timeS() + direction * SEEK_STEP_S);
     }
   });
 
@@ -56,11 +70,17 @@ export function mountMain(
       });
       strip.replaceChildren(...spans, playhead);
     },
-    draw({ timeS }) {
+    draw({ timeS, clockS }) {
       if (track === null) {
         return;
       }
-      const { info } = track;
+      const { info, timeline } = track;
+      const frame = frameAt(timeS, timeline.frameRateHz, timeline.frameCount);
+      const bands = bandsOf(timeline, frame);
+      drawRidge(ridge, bandHistory(timeline, frame, RIDGE_ROWS, HISTORY_STEP_FRAMES));
+      drawSignal(signal, controls.waveform(samples) ? samples : null);
+      drawDecomposition(decomposition, bands, clockS);
+      drawSpectrum(spectrum, bands);
       const current = sectionAt(timeS, info.sections);
       info.sections.forEach((section, index) => {
         spans[index]?.classList.toggle("on", index === current);

@@ -43,7 +43,14 @@ export function startApp(root: Document): void {
 
   const start = mountStart(root, (file) => void open(file), ensurePlayer);
   const loadingScreen = mountLoading(root);
-  const main = mountMain(root, (seekS) => player?.seek(seekS), timeS);
+  const main = mountMain(root, {
+    seek: (seekS) => player?.seek(seekS),
+    timeS,
+    waveform: (samples) => {
+      player?.waveform(samples);
+      return player !== null;
+    },
+  });
 
   const show = (route: Route) => {
     current = route;

@@ -20,3 +20,7 @@ class FileTooLargeError(TracksError):
 
 class TrackTooLongError(TracksError):
     pass
+
+
+class AnalysisQueueFullError(TracksError):
+    pass

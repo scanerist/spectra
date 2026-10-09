@@ -15,6 +15,7 @@ def test_settings_defaults() -> None:
     assert settings.max_upload_bytes == 256 * 1024 * 1024
     assert settings.max_tracks == 8
     assert settings.max_duration_s == 1_800.0
+    assert settings.max_pending_analyses == 4
 
 
 def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:

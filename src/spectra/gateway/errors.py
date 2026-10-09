@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.gateway.schemas import ErrorBody
 from spectra.tracks.domain.errors import (
+    AnalysisQueueFullError,
     EmptyUploadError,
     FileTooLargeError,
     InvalidTrackIdError,
@@ -32,6 +33,7 @@ class ErrorCode(StrEnum):
     ANALYSIS_FAILED = "analysis_failed"
     TRACK_NOT_FOUND = "track_not_found"
     NOT_READY = "not_ready"
+    BUSY = "busy"
     INTERNAL = "internal"
 
 
@@ -43,6 +45,7 @@ STATUSES: Final[Mapping[ErrorCode, HTTPStatus]] = {
     ErrorCode.ANALYSIS_FAILED: HTTPStatus.UNPROCESSABLE_CONTENT,
     ErrorCode.TRACK_NOT_FOUND: HTTPStatus.NOT_FOUND,
     ErrorCode.NOT_READY: HTTPStatus.CONFLICT,
+    ErrorCode.BUSY: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,
 }
 FAILURE_CODES: Final[Mapping[FailureCode, ErrorCode]] = {
@@ -54,6 +57,7 @@ DOMAIN_ERRORS: Final[Mapping[type[Exception], ErrorCode]] = {
     EmptyUploadError: ErrorCode.NO_FILE,
     FileTooLargeError: ErrorCode.FILE_TOO_LARGE,
     TrackTooLongError: ErrorCode.FILE_TOO_LARGE,
+    AnalysisQueueFullError: ErrorCode.BUSY,
     UnsupportedFormatError: ErrorCode.UNSUPPORTED_FORMAT,
     TrackNotFoundError: ErrorCode.TRACK_NOT_FOUND,
     InvalidTrackIdError: ErrorCode.TRACK_NOT_FOUND,

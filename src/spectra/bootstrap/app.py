@@ -13,7 +13,7 @@ from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.upload_limit import install_upload_limit
 from spectra.tracks.application.registry import TrackRegistry
-from spectra.tracks.application.service import TrackService
+from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.worker import AnalysisWorker
 
 LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -28,8 +28,11 @@ def create_app(settings: Settings) -> FastAPI:
         decoder=decoder,
         registry=registry,
         jobs=worker,
-        max_upload_bytes=settings.max_upload_bytes,
-        max_duration_s=settings.max_duration_s,
+        limits=UploadLimits(
+            max_upload_bytes=settings.max_upload_bytes,
+            max_duration_s=settings.max_duration_s,
+            max_pending=settings.max_pending_analyses,
+        ),
     )
 
     @asynccontextmanager

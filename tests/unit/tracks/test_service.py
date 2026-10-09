@@ -3,8 +3,9 @@ import pytest
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.tracks.application.registry import TrackRegistry
-from spectra.tracks.application.service import TrackService
+from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.errors import (
+    AnalysisQueueFullError,
     EmptyUploadError,
     FileTooLargeError,
     TrackNotFoundError,
@@ -15,6 +16,7 @@ from tests.fakes import FakeDecoder, FakeJobQueue
 
 DATA = b"RIFF fake wav bytes"
 MAX_DURATION_S = 600.0
+MAX_PENDING = 2
 
 
 def service_with(
@@ -26,8 +28,11 @@ def service_with(
         decoder=decoder or FakeDecoder(),
         registry=registry,
         jobs=jobs,
-        max_upload_bytes=max_upload_bytes,
-        max_duration_s=MAX_DURATION_S,
+        limits=UploadLimits(
+            max_upload_bytes=max_upload_bytes,
+            max_duration_s=MAX_DURATION_S,
+            max_pending=MAX_PENDING,
+        ),
     )
     return service, registry, jobs
 
@@ -67,6 +72,16 @@ def test_upload_over_the_limit_is_rejected() -> None:
     with pytest.raises(FileTooLargeError):
         service.submit(b"12345")
     assert jobs.jobs == []
+
+
+def test_upload_is_refused_while_the_queue_is_full() -> None:
+    service, _, jobs = service_with()
+    service.submit(b"first")
+    service.submit(b"second")
+    with pytest.raises(AnalysisQueueFullError):
+        service.submit(b"third")
+    assert len(jobs.jobs) == MAX_PENDING
+    assert service.submit(b"first") == TrackId.of_content(b"first")
 
 
 def test_track_longer_than_the_limit_is_rejected() -> None:

@@ -25,12 +25,15 @@ class TrackRegistry:
         except TrackNotFoundError:
             return None
 
+    def analysing_count(self) -> int:
+        return sum(not is_final(status) for status in self._statuses.values())
+
     def put(self, track_id: TrackId, status: TrackStatus) -> None:
         self._statuses[track_id] = status
         self._statuses.move_to_end(track_id)
         for queue in self._watchers.get(track_id, set()):
             queue.put_nowait(status)
-        self._evict()
+        self._evict(keep=track_id)
 
     async def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
         status = self.status(track_id)
@@ -50,8 +53,8 @@ class TrackRegistry:
         if not watchers:
             self._watchers.pop(track_id, None)
 
-    def _evict(self) -> None:
-        settled = [key for key, value in self._statuses.items() if is_final(value)]
+    def _evict(self, *, keep: TrackId) -> None:
+        settled = [key for key, value in self._statuses.items() if is_final(value) and key != keep]
         excess = len(self._statuses) - self._capacity
         for track_id in settled[: max(excess, 0)]:
             del self._statuses[track_id]

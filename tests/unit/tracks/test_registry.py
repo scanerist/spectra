@@ -47,6 +47,15 @@ def test_registry_never_evicts_a_running_analysis() -> None:
     assert registry.find(track("b")) is not None
 
 
+def test_a_track_that_just_settled_survives_eviction() -> None:
+    registry = TrackRegistry(capacity=2)
+    for name in "abc":
+        registry.put(track(name), Analysing.at(AnalysisStage.TEMPO))
+    registry.put(track("a"), failed("a"))
+    assert registry.find(track("a")) == failed("a")
+    assert registry.analysing_count() == 2
+
+
 @pytest.mark.anyio
 async def test_watch_yields_the_current_status_then_changes_until_final() -> None:
     registry = TrackRegistry(capacity=4)

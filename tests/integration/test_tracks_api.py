@@ -11,7 +11,7 @@ from spectra.gateway.routes import create_router, install_track_service
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.application.registry import TrackRegistry
-from spectra.tracks.application.service import TrackService
+from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId
 from tests.contract.timeline_fixture import golden_analysis
 from tests.fakes import FakeDecoder, FakeJobQueue
@@ -28,8 +28,7 @@ class Api:
             decoder=decoder or FakeDecoder(),
             registry=self.registry,
             jobs=self.jobs,
-            max_upload_bytes=LIMIT_BYTES,
-            max_duration_s=600.0,
+            limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
         )
         app = FastAPI()
         app.include_router(create_router())
@@ -95,6 +94,13 @@ def test_declared_oversized_body_is_refused_before_the_app_reads_it(api: Api) ->
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
     assert api.jobs.jobs == []
+
+
+def test_upload_while_the_queue_is_full_is_busy(api: Api) -> None:
+    api.client.post("/tracks", files={"file": ("a.wav", b"first", "audio/wav")})
+    response = api.client.post("/tracks", files={"file": ("b.wav", DATA, "audio/wav")})
+    assert response.status_code == 503
+    assert response.json()["error"] == "busy"
 
 
 def test_track_over_the_duration_limit_is_file_too_large() -> None:

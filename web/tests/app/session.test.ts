@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AudioDecodeError, messageFor } from "../../src/app/messages";
+import { AudioDecodeError, messageFor, ProtocolMismatchError } from "../../src/app/messages";
 import { isAudioFile, loadTrack, UPLOAD_SHARE } from "../../src/app/session";
 import { type Api, ApiError, type TrackEvent, type TrackInfo } from "../../src/contract/api";
 import type { Timeline } from "../../src/contract/timeline";
@@ -19,7 +19,12 @@ class FakeApi implements Api {
   constructor(
     private readonly events: TrackEvent[],
     private readonly uploadError: ApiError | null = null,
+    private readonly protocolVersion = 1,
   ) {}
+
+  async protocol(): Promise<number> {
+    return this.protocolVersion;
+  }
 
   async upload(_file: Blob, filename: string): Promise<string> {
     if (this.uploadError !== null) {
@@ -139,6 +144,16 @@ describe("loading a track", () => {
     await rejection(
       loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, abandoned.signal),
     );
+    expect(api.uploads).toEqual([]);
+  });
+
+  it("asks for a reload before uploading to an engine that speaks another protocol", async () => {
+    const api = new FakeApi(READY, null, 2);
+    const error = await rejection(
+      loadTrack(WAV, { api, decode: async () => "audio" }, () => undefined, LIVE),
+    );
+    expect(error).toBeInstanceOf(ProtocolMismatchError);
+    expect(messageFor(error)).toContain("обнови страницу");
     expect(api.uploads).toEqual([]);
   });
 

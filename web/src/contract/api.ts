@@ -67,6 +67,7 @@ export type OpenEventStream = (url: string) => EventStream;
 const CLOSED = 2;
 
 export interface Api {
+  protocol(signal?: AbortSignal): Promise<number>;
   upload(file: Blob, filename: string, signal?: AbortSignal): Promise<string>;
   track(trackId: string): Promise<TrackInfo>;
   timeline(trackId: string, signal?: AbortSignal): Promise<Timeline>;
@@ -82,6 +83,10 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
     return response;
   };
   return {
+    async protocol(signal) {
+      const response = await request("/health", { signal: signal ?? null });
+      return field(await response.json(), "protocol", isNumber);
+    },
     async upload(file, filename, signal) {
       const form = new FormData();
       form.append("file", file, filename);

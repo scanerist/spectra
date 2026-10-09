@@ -4,6 +4,10 @@ export class AudioDecodeError extends Error {
   override readonly name = "AudioDecodeError";
 }
 
+export class ProtocolMismatchError extends Error {
+  override readonly name = "ProtocolMismatchError";
+}
+
 const SECONDS_PER_MINUTE = 60;
 
 export const STAGE_LABELS: Readonly<Record<Stage, string>> = {
@@ -19,6 +23,9 @@ export const DONE_LABEL = "готово";
 export function messageFor(error: unknown): string {
   if (error instanceof AudioDecodeError) {
     return "браузер не смог воспроизвести этот файл. попробуй mp3 или wav.";
+  }
+  if (error instanceof ProtocolMismatchError) {
+    return "spectra обновилась. обнови страницу.";
   }
   if (!(error instanceof ApiError)) {
     return "что-то сломалось. попробуй ещё раз.";

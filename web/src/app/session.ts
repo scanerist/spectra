@@ -1,6 +1,12 @@
-import { type Api, ApiError, type TrackInfo } from "../contract/api";
+import { type Api, ApiError, PROTOCOL_VERSION, type TrackInfo } from "../contract/api";
 import type { Timeline } from "../contract/timeline";
-import { AudioDecodeError, DONE_LABEL, READING_LABEL, STAGE_LABELS } from "./messages";
+import {
+  AudioDecodeError,
+  DONE_LABEL,
+  ProtocolMismatchError,
+  READING_LABEL,
+  STAGE_LABELS,
+} from "./messages";
 
 export const UPLOAD_SHARE = 0.1;
 
@@ -37,6 +43,10 @@ export async function loadTrack<A>(
     throw new ApiError("unsupported_format", "the file is not audio");
   }
   onProgress(0, READING_LABEL);
+  const protocol = await deps.api.protocol(signal);
+  if (protocol !== PROTOCOL_VERSION) {
+    throw new ProtocolMismatchError(`the engine speaks protocol ${protocol}`);
+  }
   const data = await file.arrayBuffer();
   signal.throwIfAborted();
   const decoded = settle(deps.decode(data.slice(0)));

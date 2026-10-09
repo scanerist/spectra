@@ -147,6 +147,15 @@ describe("uploading", () => {
   });
 });
 
+describe("checking the engine", () => {
+  it("reads the protocol version from the health check", async () => {
+    const { fetchFn, calls } = answering(() => json({ ok: true, protocol: 1 }));
+    const api = createApi(fetchFn, () => new FakeStream());
+    expect(await api.protocol()).toBe(1);
+    expect(calls.map((call) => call.url)).toEqual(["/health"]);
+  });
+});
+
 describe("reading a track", () => {
   it("maps the metadata to camel case", async () => {
     const api = createApi(answering(() => json(TRACK_JSON)).fetchFn, () => new FakeStream());

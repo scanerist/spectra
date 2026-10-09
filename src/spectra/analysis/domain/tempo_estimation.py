@@ -41,11 +41,15 @@ def estimate_tempo(
     if not pulses.any():
         raise TempoNotFoundError("the onset envelope has no pulses to measure a tempo from")
     correlation = autocorrelation(pulses)
-    coarse_bpm = coarse_tempo(correlation, frame_rate_hz=frame_rate_hz)
+    measured_bpm = refine_tempo(
+        correlation,
+        bpm=coarse_tempo(correlation, frame_rate_hz=frame_rate_hz),
+        frame_rate_hz=frame_rate_hz,
+    )
     candidates = [
-        refine_tempo(correlation, bpm=coarse_bpm * factor, frame_rate_hz=frame_rate_hz)
+        measured_bpm * factor
         for factor in OCTAVE_FACTORS
-        if MIN_SEARCH_BPM <= coarse_bpm * factor <= MAX_SEARCH_BPM
+        if MIN_SEARCH_BPM <= measured_bpm * factor <= MAX_SEARCH_BPM
     ]
     best = max(
         candidates,

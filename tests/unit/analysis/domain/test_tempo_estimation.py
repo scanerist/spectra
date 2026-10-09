@@ -57,10 +57,8 @@ def test_offbeat_hats_do_not_double_the_tempo() -> None:
     assert tempo_of(samples) == pytest.approx(128.0, abs=TOLERANCE_BPM)
 
 
-def test_half_time_drums_with_hats_on_every_beat_keep_the_full_tempo() -> None:
-    bpm = 145.0
+def half_time_drums(bpm: float, duration_s: float) -> Float32Array:
     beat_s = 60.0 / bpm
-    duration_s = 30.0
     kicks = kick_train(bpm / 4.0, duration_s)
     snares = silence(duration_s)
     hats = silence(duration_s)
@@ -73,7 +71,35 @@ def test_half_time_drums_with_hats_on_every_beat_keep_the_full_tempo() -> None:
         if beat % 4 == 2:
             snares[start : start + snare.size] += snare[: snares.size - start]
         hats[start : start + hat.size] += hat[: hats.size - start]
-    assert tempo_of(kicks + snares + hats) == pytest.approx(bpm, abs=TOLERANCE_BPM)
+    return kicks + snares + hats
+
+
+@pytest.mark.parametrize(
+    ("bpm", "duration_s"), [(145.0, 30.0), (142.0, 190.0)], ids=["145-short", "142-long"]
+)
+def test_half_time_drums_with_hats_on_every_beat_keep_the_full_tempo(
+    bpm: float, duration_s: float
+) -> None:
+    assert tempo_of(half_time_drums(bpm, duration_s)) == pytest.approx(bpm, abs=TOLERANCE_BPM)
+
+
+def loose_808(bpm: float, duration_s: float, *, seed: int) -> Float32Array:
+    beat_s = 60.0 / bpm
+    rng = np.random.default_rng(seed)
+    out = silence(duration_s)
+    t_s = np.arange(round(0.5 * 44_100)) / 44_100
+    for beat in range(math.floor(duration_s / beat_s)):
+        if rng.random() < 0.3:
+            start = round((beat + rng.choice([0.25, 0.5, 0.75, 1.5])) * beat_s * 44_100)
+            freq_hz = rng.choice([45.0, 50.0, 55.0, 60.0])
+            note = (0.5 * np.sin(2 * np.pi * freq_hz * t_s) * np.exp(-t_s * 4)).astype(np.float32)
+            out[start : start + note.size] += note[: max(0, out.size - start)]
+    return out
+
+
+def test_half_time_drums_with_a_loose_808_keep_an_exact_full_tempo() -> None:
+    samples = half_time_drums(142.0, 190.0) + loose_808(142.0, 190.0, seed=0)
+    assert tempo_of(samples) == pytest.approx(142.0, abs=0.005)
 
 
 def test_leading_silence_does_not_change_the_tempo() -> None:

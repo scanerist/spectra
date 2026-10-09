@@ -6,14 +6,20 @@ from numpy.typing import NDArray
 
 from spectra.analysis.domain.envelopes import normalise_db, power_to_db, release
 from spectra.analysis.domain.ranges import Float32Array
-from spectra.analysis.domain.spectrum import BAND_COUNT, band_centers_hz
 from spectra.analysis.domain.stft import FRAME_RATE_HZ, bin_freqs_hz
 
+BAND_COUNT: Final = 64
+MIN_BAND_FREQ_HZ: Final = 30.0
+MAX_BAND_FREQ_HZ: Final = 16_000.0
 BAND_RANGE_DB: Final = 60.0
 BAND_REFERENCE_PERCENTILE: Final = 99.5
 MIN_REFERENCE_DB: Final = -40.0
 FLOOR_DB: Final = -120.0
 BAND_RELEASE_S: Final = 0.08
+
+
+def band_centers_hz() -> NDArray[np.float64]:
+    return np.geomspace(MIN_BAND_FREQ_HZ, MAX_BAND_FREQ_HZ, BAND_COUNT)
 
 
 def band_edges_hz() -> NDArray[np.float64]:

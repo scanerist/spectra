@@ -2,9 +2,9 @@ from typing import Final
 
 import numpy as np
 
+from spectra.analysis.domain.bands import band_centers_hz
 from spectra.analysis.domain.envelopes import normalise_db, power_to_db
 from spectra.analysis.domain.ranges import Float32Array
-from spectra.analysis.domain.spectrum import band_centers_hz
 
 ONSET_MAX_FREQ_HZ: Final = 250.0
 ONSET_RANGE_DB: Final = 50.0

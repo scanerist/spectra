@@ -4,6 +4,7 @@ from typing import Final
 import numpy as np
 import pytest
 
+from spectra.analysis.domain.bands import BAND_COUNT
 from spectra.analysis.domain.bar_spectra import FOURIER_BIN_COUNT
 from spectra.analysis.domain.beat_grid import BeatGrid
 from spectra.analysis.domain.errors import InvalidTrackAnalysisError, UnanalysableSignalError
@@ -11,7 +12,6 @@ from spectra.analysis.domain.frame_levels import LEVEL_COUNT
 from spectra.analysis.domain.peaks import Peaks
 from spectra.analysis.domain.ranges import Float32Array
 from spectra.analysis.domain.sections import Section, SectionName
-from spectra.analysis.domain.spectrum import BAND_COUNT
 from spectra.analysis.domain.tempo import Tempo
 from spectra.analysis.domain.track_analysis import (
     AnalysisStage,

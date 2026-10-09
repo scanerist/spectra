@@ -5,7 +5,7 @@ from typing import Final
 
 import numpy as np
 
-from spectra.analysis.domain.bands import band_levels, fold_to_bands
+from spectra.analysis.domain.bands import BAND_COUNT, band_levels, fold_to_bands
 from spectra.analysis.domain.bar_spectra import FOURIER_BIN_COUNT, bar_peaks, bar_spectra
 from spectra.analysis.domain.beat_grid import BeatGrid, locate_beat_grid
 from spectra.analysis.domain.errors import (
@@ -21,7 +21,6 @@ from spectra.analysis.domain.peaks import Peaks
 from spectra.analysis.domain.ranges import Float32Array, read_only_float32, require_array_in_range
 from spectra.analysis.domain.sections import Section, find_sections, require_contiguous
 from spectra.analysis.domain.signal import ANALYSIS_SAMPLE_RATE_HZ, AudioSignal
-from spectra.analysis.domain.spectrum import BAND_COUNT
 from spectra.analysis.domain.stft import FRAME_RATE_HZ, frame_count, stft_chunks
 from spectra.analysis.domain.tempo_estimation import estimate_tempo
 

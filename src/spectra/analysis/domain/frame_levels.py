@@ -2,10 +2,10 @@ from typing import Final
 
 import numpy as np
 
+from spectra.analysis.domain.bands import band_centers_hz
 from spectra.analysis.domain.envelopes import moving_average, normalise_db, power_to_db, release
 from spectra.analysis.domain.onsets import onset_envelope
 from spectra.analysis.domain.ranges import Float32Array
-from spectra.analysis.domain.spectrum import band_centers_hz
 from spectra.analysis.domain.stft import FRAME_RATE_HZ
 
 LEVEL_COLUMNS: Final = ("kick", "bass", "mid", "high", "energy")

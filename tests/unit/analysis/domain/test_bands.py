@@ -2,13 +2,16 @@ import numpy as np
 import pytest
 
 from spectra.analysis.domain.bands import (
+    BAND_COUNT,
+    MAX_BAND_FREQ_HZ,
+    MIN_BAND_FREQ_HZ,
+    band_centers_hz,
     band_edges_hz,
     band_levels,
     band_weights,
     fold_to_bands,
 )
 from spectra.analysis.domain.ranges import Float32Array
-from spectra.analysis.domain.spectrum import BAND_COUNT, band_centers_hz
 from spectra.analysis.domain.stft import bin_freqs_hz, stft_chunks
 from tests.signals import noise, signal_of, silence, sine
 
@@ -19,6 +22,14 @@ def band_power_of(samples: Float32Array) -> Float32Array:
 
 def nearest_band(freq_hz: float) -> int:
     return int(np.argmin(np.abs(np.log(band_centers_hz() / freq_hz))))
+
+
+def test_band_centers_span_log_range() -> None:
+    centers_hz = band_centers_hz()
+    assert centers_hz.shape == (BAND_COUNT,)
+    assert centers_hz[0] == pytest.approx(MIN_BAND_FREQ_HZ)
+    assert centers_hz[-1] == pytest.approx(MAX_BAND_FREQ_HZ)
+    np.testing.assert_allclose(np.diff(np.log(centers_hz)), np.log(centers_hz[1] / centers_hz[0]))
 
 
 def test_band_edges_bracket_every_centre() -> None:

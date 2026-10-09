@@ -10,9 +10,82 @@
   <body>
     <div class="app">
       <header>
-        <div class="l"><a class="word" href="#start" id="home">spectra</a></div>
+        <div class="l">
+          <a class="word" href="#start" id="home">spectra</a>
+          <a class="btn bare" href="#main" id="back" aria-label="Назад к визуализации" hidden>←</a>
+        </div>
+        <div class="r">
+          <span id="clock" class="mut" hidden>0:00 / 0:00</span>
+          <button class="btn" id="play" type="button" aria-label="Пауза" hidden>❚❚</button>
+          <a class="btn bare" id="repo" href="#start" hidden>github</a>
+        </div>
       </header>
+
+      <section class="screen" id="s-start" hidden>
+        <div class="start">
+          <div class="hero">
+            <h1>закинь трек.</h1>
+            <div class="cv" aria-hidden="true"><canvas id="c-hero"></canvas></div>
+          </div>
+          <div class="dropcol">
+            <label class="drop" id="drop" for="file">
+              <span class="k tl"></span><span class="k tr"></span><span class="k bl"></span><span class="k br"></span>
+              <span>перетащи файл</span>
+              <input type="file" id="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.oga" />
+            </label>
+            <p class="err" id="file-error" role="alert" hidden></p>
+            <div class="dropfoot">
+              <span class="mut">mp3 wav flac ogg</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="s-loading" hidden>
+        <div class="load" role="status" aria-live="polite">
+          <p class="big">разбираю на частоты</p>
+          <div class="blocks" id="blocks" aria-hidden="true"></div>
+          <p class="mut" id="stage">читаю файл</p>
+        </div>
+      </section>
+
+      <section class="screen" id="s-main" hidden>
+        <div class="stage">
+          <div class="vis" role="img" aria-label="Спектр трека во времени">
+            <div class="cv fill"><canvas id="c-ridge"></canvas></div>
+            <div class="scan"></div>
+            <span class="k tl"></span><span class="k tr"></span><span class="k bl"></span><span class="k br"></span>
+            <button class="btn acc unmute" id="unmute" type="button" hidden>▶ включить звук</button>
+          </div>
+          <aside class="tempo">
+            <div class="bpm"><b id="bpm">0.0</b><span class="mut">bpm</span></div>
+            <div class="beats" id="beats"><i></i><i></i><i></i><i></i></div>
+          </aside>
+        </div>
+        <div class="trio" aria-hidden="true">
+          <div class="cv"><canvas id="c-signal"></canvas></div>
+          <div class="cv"><canvas id="c-decomposition"></canvas></div>
+          <div class="cv"><canvas id="c-spectrum"></canvas></div>
+        </div>
+        <div class="tl" id="sections" role="slider" tabindex="0" aria-label="Позиция в треке" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="head" id="playhead"></div>
+        </div>
+        <div class="bar"><a class="btn" href="#analysis">разбор</a></div>
+      </section>
+
+      <section class="screen" id="s-analysis" hidden>
+        <div class="vis wire" role="img" aria-label="Каркас спектра: история спектра как проволочный рельеф">
+          <div class="cv fill"><canvas id="c-wire"></canvas></div>
+          <span class="k tl"></span><span class="k tr"></span>
+        </div>
+        <div class="trio" aria-hidden="true">
+          <div class="cv"><canvas id="c-epicycles"></canvas></div>
+          <div class="cv"><canvas id="c-winding"></canvas></div>
+          <div class="cv"><canvas id="c-magnitude"></canvas></div>
+        </div>
+      </section>
     </div>
+    <canvas id="dissolve" hidden aria-hidden="true"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

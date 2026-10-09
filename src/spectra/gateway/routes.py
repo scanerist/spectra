@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, File, Response, UploadFile, status
@@ -83,7 +84,7 @@ def create_router() -> APIRouter:
         file: Annotated[UploadFile | None, File()] = None,
     ) -> TrackCreated:
         data = await read_upload(file, limit=service.max_upload_bytes)
-        return TrackCreated(track_id=service.submit(data).value)
+        return TrackCreated(track_id=(await service.submit(data)).value)
 
     @router.get("/tracks/{track_id}")
     async def get_track(track_id: str, service: Service) -> TrackInfo:
@@ -103,6 +104,7 @@ def create_router() -> APIRouter:
     @router.get("/tracks/{track_id}/timeline")
     async def get_timeline(track_id: str, service: Service) -> Response:
         _, analysis = ready_analysis(service, track_id)
-        return Response(content=encode_timeline(analysis), media_type=TIMELINE_MEDIA_TYPE)
+        timeline = await asyncio.to_thread(encode_timeline, analysis)
+        return Response(content=timeline, media_type=TIMELINE_MEDIA_TYPE)
 
     return router

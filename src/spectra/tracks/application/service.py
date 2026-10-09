@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -39,20 +40,14 @@ class TrackService:
     def max_upload_bytes(self) -> int:
         return self._limits.max_upload_bytes
 
-    def submit(self, data: bytes) -> TrackId:
+    async def submit(self, data: bytes) -> TrackId:
         if not data:
             raise EmptyUploadError("the upload is empty")
         if len(data) > self._limits.max_upload_bytes:
             raise FileTooLargeError(
                 f"the upload is larger than {self._limits.max_upload_bytes} bytes"
             )
-        probe = self._decoder.probe(data)
-        if probe.duration_s > self._limits.max_duration_s:
-            limit_s = self._limits.max_duration_s
-            raise TrackTooLongError(
-                f"the track lasts {probe.duration_s:.0f} s, over {limit_s:.0f} s"
-            )
-        track_id = TrackId.of_content(data)
+        track_id = await asyncio.to_thread(self._inspect, data)
         known = self._registry.find(track_id)
         if known is not None and not isinstance(known, Failed):
             return track_id
@@ -61,6 +56,15 @@ class TrackService:
         self._registry.put(track_id, Analysing.at(AnalysisStage.DECODING))
         self._jobs.enqueue(AnalysisJob(track_id=track_id, data=data))
         return track_id
+
+    def _inspect(self, data: bytes) -> TrackId:
+        probe = self._decoder.probe(data)
+        if probe.duration_s > self._limits.max_duration_s:
+            limit_s = self._limits.max_duration_s
+            raise TrackTooLongError(
+                f"the track lasts {probe.duration_s:.0f} s, over {limit_s:.0f} s"
+            )
+        return TrackId.of_content(data)
 
     def status(self, track_id: TrackId) -> TrackStatus:
         return self._registry.status(track_id)

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from spectra.bootstrap import app as bootstrap_app
 from spectra.bootstrap.hosted import postgres_url
-from spectra.bootstrap.settings import HostedSettings, LogLevel, Settings
+from spectra.bootstrap.settings import HostedSettings, LogLevel, Mode, Settings
 
 
 def test_settings_defaults() -> None:
@@ -17,6 +17,7 @@ def test_settings_defaults() -> None:
     assert settings.max_tracks == 8
     assert settings.max_duration_s == 1_800.0
     assert settings.max_pending_analyses == 4
+    assert settings.mode is Mode.LOCAL
 
 
 def test_settings_read_the_spectra_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,6 +110,26 @@ def test_postgres_url_escapes_the_password(monkeypatch: pytest.MonkeyPatch) -> N
     assert url.render_as_string(hide_password=False) == (
         "postgresql+asyncpg://spectra:p%40ss%3Aw%2Frd@postgres:5432/spectra"
     )
+
+
+def test_local_mode_needs_no_hosted_settings() -> None:
+    assert bootstrap_app.hosted_settings(Settings()) is None
+
+
+def test_hosted_mode_reads_the_hosted_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_hosted_environment(monkeypatch)
+    monkeypatch.setenv("SPECTRA_MODE", "hosted")
+    hosted = bootstrap_app.hosted_settings(Settings())
+    assert hosted is not None
+    assert hosted.postgres.host == "postgres"
+
+
+def test_hosted_mode_refuses_to_start_without_connections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPECTRA_MODE", "hosted")
+    with pytest.raises(ValidationError):
+        bootstrap_app.hosted_settings(Settings())
 
 
 def test_created_app_serves_health() -> None:

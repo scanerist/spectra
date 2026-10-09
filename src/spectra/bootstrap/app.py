@@ -7,59 +7,42 @@ from typing import Final
 import uvicorn
 from fastapi import FastAPI
 
-from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
-from spectra.bootstrap.settings import LogLevel, Settings
+from spectra.bootstrap.hosted import consumer_name, open_hosted
+from spectra.bootstrap.settings import HostedSettings, LogLevel, Mode, Settings
+from spectra.bootstrap.tracks import (
+    analysis_worker,
+    hosted_parts,
+    local_parts,
+    track_service,
+)
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router, install_track_service
-from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import install_upload_limit
-from spectra.tracks.adapters.memory import (
-    InMemoryBlobStore,
-    InMemoryJobQueue,
-    InMemoryProgressFeed,
-    InMemoryTrackStore,
-)
-from spectra.tracks.application.service import TrackService, UploadLimits
-from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.application.worker import AnalysisWorker
 
 LOG_FORMAT: Final = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(settings: Settings, hosted: HostedSettings | None = None) -> FastAPI:
     configure_logging(settings.log_level)
-    decoder = SoundfileDecoder()
-    board = StatusBoard(
-        store=InMemoryTrackStore(capacity=settings.max_tracks), feed=InMemoryProgressFeed()
-    )
-    blobs = InMemoryBlobStore()
-    jobs = InMemoryJobQueue()
-    worker = AnalysisWorker(
-        decoder=decoder, board=board, blobs=blobs, jobs=jobs, encoder=encode_timeline
-    )
-    service = TrackService(
-        decoder=decoder,
-        board=board,
-        blobs=blobs,
-        jobs=jobs,
-        limits=UploadLimits(
-            max_upload_bytes=settings.max_upload_bytes,
-            max_duration_s=settings.max_duration_s,
-            max_pending=settings.max_pending_analyses,
-        ),
-    )
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        async with asyncio.TaskGroup() as group:
-            group.create_task(worker.run())
-            yield
-            await worker.close()
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if hosted is None:
+            parts = local_parts(settings)
+            install_track_service(app, track_service(parts, settings))
+            worker = analysis_worker(parts)
+            async with asyncio.TaskGroup() as group:
+                group.create_task(worker.run())
+                yield
+                await worker.close()
+        else:
+            async with open_hosted(hosted, consumer=consumer_name()) as adapters:
+                install_track_service(app, track_service(hosted_parts(adapters), settings))
+                yield
 
     app = FastAPI(title="spectra engine", lifespan=lifespan)
     app.include_router(create_router())
     install_error_handlers(app)
-    install_track_service(app, service)
     install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)
     return app
 
@@ -68,10 +51,18 @@ def configure_logging(level: LogLevel) -> None:
     logging.basicConfig(level=level.value, format=LOG_FORMAT)
 
 
+def hosted_settings(settings: Settings) -> HostedSettings | None:
+    match settings.mode:
+        case Mode.LOCAL:
+            return None
+        case Mode.HOSTED:
+            return HostedSettings.from_environment()
+
+
 def run() -> None:
     settings = Settings()
     uvicorn.run(
-        create_app(settings),
+        create_app(settings, hosted_settings(settings)),
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),

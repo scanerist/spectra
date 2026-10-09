@@ -141,7 +141,8 @@ export function startApp(root: Document): void {
   let lastClockS: number | null = null;
   let motionS = 0;
   let shownRunning = true;
-  const frame = (nowMs: number) => {
+  let lastFailure = "";
+  const render = (nowMs: number) => {
     const clockS = nowMs / 1000;
     const dtS = Math.min(MAX_FRAME_DT_S, clockS - (lastClockS ?? clockS));
     lastClockS = clockS;
@@ -166,6 +167,17 @@ export function startApp(root: Document): void {
     }
     if (current === "analysis") {
       analysis.draw(moment);
+    }
+  };
+  const frame = (nowMs: number) => {
+    try {
+      render(nowMs);
+    } catch (error) {
+      const failure = String(error);
+      if (failure !== lastFailure) {
+        lastFailure = failure;
+        console.error(error);
+      }
     }
     requestAnimationFrame(frame);
   };

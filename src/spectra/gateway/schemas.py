@@ -33,6 +33,11 @@ class ErrorBody(ApiModel):
     message: str
 
 
+class ProgressBody(ApiModel):
+    stage: str
+    progress: float
+
+
 def section_body(section: Section) -> SectionBody:
     return SectionBody(
         name=section.name.value,

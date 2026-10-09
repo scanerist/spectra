@@ -2,6 +2,7 @@ from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, File, Request, Response, UploadFile, status
 from fastapi.requests import HTTPConnection
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from spectra.analysis.domain.track_analysis import TrackAnalysis
@@ -11,6 +12,7 @@ from spectra.gateway.errors import (
     ErrorCode,
     GatewayNotConfiguredError,
 )
+from spectra.gateway.events import EVENT_STREAM_HEADERS, EVENT_STREAM_MEDIA_TYPE, status_events
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
 from spectra.gateway.timeline_codec import encode_timeline
@@ -92,6 +94,16 @@ def create_router() -> APIRouter:
     async def get_track(track_id: str, service: Service) -> TrackInfo:
         track, analysis = ready_analysis(service, track_id)
         return track_info(track, analysis)
+
+    @router.get("/tracks/{track_id}/events")
+    async def track_events(track_id: str, service: Service) -> StreamingResponse:
+        track = TrackId(track_id)
+        service.status(track)
+        return StreamingResponse(
+            status_events(track, service.watch(track)),
+            media_type=EVENT_STREAM_MEDIA_TYPE,
+            headers=dict(EVENT_STREAM_HEADERS),
+        )
 
     @router.get("/tracks/{track_id}/timeline")
     async def get_timeline(track_id: str, service: Service) -> Response:

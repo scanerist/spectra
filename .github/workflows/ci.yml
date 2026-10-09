@@ -41,12 +41,13 @@ jobs:
         with:
           context: .
           load: true
-          tags: spectra:ci
+          tags: spectra:local
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - run: docker run --detach --name spectra --publish 8000:8000 spectra:ci
-      - run: timeout 60 sh -c 'until docker exec spectra spectra-healthcheck; do sleep 1; done'
-      - run: test "$(docker exec spectra id -u)" = 10001
-      - run: docker exec spectra spectra-smoke
+      - run: cp .env.example .env
+      - run: docker compose -f compose.yaml -f compose.dev.yaml up --detach --wait --no-build
+      - run: test "$(docker compose exec -T api id -u)" = 10001
+      - run: docker compose exec -T api spectra-smoke
+      - run: curl --silent --output /dev/null --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:7070/
       - if: failure()
-        run: docker logs spectra
+        run: docker compose logs

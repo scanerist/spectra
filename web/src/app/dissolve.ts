@@ -25,13 +25,20 @@ export function createDissolve(
   const target = canvas.getContext("2d");
   let busy = false;
   let first = true;
+  let covered = false;
+  let pending: (() => void) | null = null;
   return (swap) => {
-    if (reducedMotion || first || busy || target === null) {
+    if (reducedMotion || first || target === null || (busy && covered)) {
       first = false;
       swap();
       return;
     }
+    pending = swap;
+    if (busy) {
+      return;
+    }
     busy = true;
+    covered = false;
     const columns = Math.ceil(innerWidth / CELL_CSS_PX);
     const rows = Math.ceil(innerHeight / CELL_CSS_PX);
     const cells = columns * rows;
@@ -44,7 +51,6 @@ export function createDissolve(
       target.fillRect(cell % columns, Math.floor(cell / columns), 1, 1);
     };
     let startMs: number | null = null;
-    let swapped = false;
     const frame = (nowMs: number) => {
       startMs ??= nowMs;
       const elapsedMs = nowMs - startMs;
@@ -52,9 +58,10 @@ export function createDissolve(
       if (elapsedMs < PHASE_MS) {
         order.slice(0, Math.floor((cells * elapsedMs) / PHASE_MS)).forEach(paint);
       } else {
-        if (!swapped) {
-          swap();
-          swapped = true;
+        if (!covered) {
+          covered = true;
+          pending?.();
+          pending = null;
         }
         const revealed = Math.floor(cells * Math.min(1, (elapsedMs - PHASE_MS) / PHASE_MS));
         order.slice(revealed).forEach(paint);

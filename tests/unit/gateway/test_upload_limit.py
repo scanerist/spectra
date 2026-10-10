@@ -9,7 +9,7 @@ from tests.fakes import FakeClock
 
 LIMIT_BYTES = 1_000
 CHUNK = b"x" * 100
-PACE = UploadPace(min_bytes_per_s=100.0, grace_s=2.0, idle_s=5.0)
+PACE = UploadPace(min_bytes_per_s=100.0, grace_s=2.0, idle_s=5.0, max_s=60.0)
 
 
 class ChunkedClient:
@@ -120,9 +120,23 @@ async def test_a_body_that_stops_arriving_is_dropped_after_the_idle_time() -> No
     limit = UploadLimit(
         reading_app,
         max_body_bytes=LIMIT_BYTES,
-        pace=UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=0.05),
+        pace=UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=0.05, max_s=60.0),
         clock=client.clock,
     )
     async with asyncio.timeout(5.0):
         await limit(post_scope(), client.receive, client.send)
     assert client.status == 400
+
+
+@pytest.mark.anyio
+async def test_a_body_still_arriving_after_the_upload_deadline_is_dropped() -> None:
+    client = ChunkedClient(chunks=10, gap_s=1.0)
+    limit = UploadLimit(
+        reading_app,
+        max_body_bytes=LIMIT_BYTES,
+        pace=UploadPace(min_bytes_per_s=1.0, grace_s=1.0, idle_s=5.0, max_s=5.0),
+        clock=client.clock,
+    )
+    await limit(post_scope(), client.receive, client.send)
+    assert client.status == 400
+    assert client.pulled == 6

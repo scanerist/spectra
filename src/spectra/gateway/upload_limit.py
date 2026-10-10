@@ -24,6 +24,7 @@ class UploadPace:
     min_bytes_per_s: float
     grace_s: float
     idle_s: float
+    max_s: float
 
 
 class Refusal(StrEnum):
@@ -52,8 +53,9 @@ class BodyGuard:
             return DISCONNECT
         if self._complete:
             return await self._receive()
+        wait_s = min(self._pace.idle_s, self._started_s + self._pace.max_s - self._clock.now_s())
         try:
-            async with asyncio.timeout(self._pace.idle_s):
+            async with asyncio.timeout(max(wait_s, 0.0)):
                 message = await self._receive()
         except TimeoutError:
             self.refusal = Refusal.TOO_SLOW
@@ -75,8 +77,11 @@ class BodyGuard:
     def _judge(self) -> Refusal | None:
         if self._received_bytes > self._limit_bytes:
             return Refusal.TOO_LARGE
-        paced_s = self._clock.now_s() - self._started_s - self._pace.grace_s
-        if not self._complete and self._received_bytes < self._pace.min_bytes_per_s * paced_s:
+        if self._complete:
+            return None
+        elapsed_s = self._clock.now_s() - self._started_s
+        paced_bytes = self._pace.min_bytes_per_s * (elapsed_s - self._pace.grace_s)
+        if elapsed_s > self._pace.max_s or self._received_bytes < paced_bytes:
             return Refusal.TOO_SLOW
         return None
 
@@ -110,10 +115,12 @@ class UploadLimit:
                 message = f"the request body is larger than {self._max_body_bytes} bytes"
                 response = error_response(ErrorCode.FILE_TOO_LARGE, message)
             case Refusal.TOO_SLOW:
-                rate = self._pace.min_bytes_per_s
-                response = error_response(
-                    ErrorCode.NO_FILE, f"the upload arrived slower than {rate:.0f} bytes per second"
+                pace = self._pace
+                message = (
+                    f"the upload must arrive at {pace.min_bytes_per_s:.0f} bytes per second "
+                    f"or more and within {pace.max_s:.0f} s"
                 )
+                response = error_response(ErrorCode.NO_FILE, message)
         await response(scope, receive, send)
 
 

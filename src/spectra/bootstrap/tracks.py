@@ -132,6 +132,7 @@ def upload_pace(settings: Settings) -> UploadPace:
         min_bytes_per_s=settings.min_upload_bytes_per_s,
         grace_s=UPLOAD_GRACE_S,
         idle_s=UPLOAD_IDLE_S,
+        max_s=settings.max_upload_s,
     )
 
 

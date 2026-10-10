@@ -44,7 +44,7 @@ def probe_of(
 
 
 DEFAULT_PROBE: Final = probe_of()
-RELAXED_PACE: Final = UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=60.0)
+RELAXED_PACE: Final = UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=60.0, max_s=3_600.0)
 
 
 class FakeDecoder:

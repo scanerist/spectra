@@ -55,7 +55,7 @@ services:
   api:
     <<: *spectra
     networks:
-      - edge
+      - proxy
       - backend
     healthcheck:
       start_period: 10s
@@ -91,6 +91,7 @@ services:
       - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443/udp"
     networks:
       - edge
+      - proxy
     read_only: true
     tmpfs:
       - /tmp
@@ -98,6 +99,8 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    mem_limit: ${SPECTRA_CADDY_MEMORY_LIMIT:-256m}
+    pids_limit: 128
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -121,6 +124,7 @@ services:
     cap_drop:
       - ALL
     mem_limit: ${SPECTRA_PROMETHEUS_MEMORY_LIMIT:-512m}
+    pids_limit: 128
     volumes:
       - prometheus:/prometheus
 
@@ -151,6 +155,7 @@ services:
     cap_drop:
       - ALL
     mem_limit: ${SPECTRA_GRAFANA_MEMORY_LIMIT:-384m}
+    pids_limit: 128
     volumes:
       - grafana:/var/lib/grafana
     depends_on:
@@ -165,6 +170,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
     networks:
       - backend
+    mem_limit: ${SPECTRA_POSTGRES_MEMORY_LIMIT:-512m}
+    pids_limit: 256
     volumes:
       - postgres:/var/lib/postgresql
     healthcheck:
@@ -186,6 +193,8 @@ services:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?}
     networks:
       - backend
+    mem_limit: ${SPECTRA_REDIS_MEMORY_LIMIT:-256m}
+    pids_limit: 128
     volumes:
       - redis:/data
     healthcheck:
@@ -206,6 +215,10 @@ services:
       ROOT_SECRET_KEY: ${S3_SECRET_KEY:?}
     networks:
       - backend
+    cap_drop:
+      - ALL
+    mem_limit: ${SPECTRA_S3_MEMORY_LIMIT:-512m}
+    pids_limit: 128
     volumes:
       - s3-objects:/data/s3
       - s3-iam:/data/iam
@@ -218,6 +231,8 @@ services:
 networks:
   edge:
     enable_ipv6: true
+  proxy:
+    internal: true
   backend:
     internal: true
   monitoring:

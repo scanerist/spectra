@@ -20,30 +20,52 @@ class FakeMedia extends EventTarget implements Media {
   }
 }
 
+const PATIENT = new AbortController().signal;
+
 describe("preparing playback", () => {
   it("is ready once the browser has decoded the first frames", async () => {
     const media = new FakeMedia();
-    const ready = whenPlayable(media);
+    const ready = whenPlayable(media, PATIENT);
     media.load(432.17);
     await expect(ready).resolves.toBeUndefined();
   });
 
   it("is ready at once when the media already has data", async () => {
-    await expect(whenPlayable(new FakeMedia(4, 12))).resolves.toBeUndefined();
+    await expect(whenPlayable(new FakeMedia(4, 12), PATIENT)).resolves.toBeUndefined();
   });
 
   it("fails as soon as the browser cannot play the file", async () => {
     const media = new FakeMedia();
-    const ready = whenPlayable(media);
+    const ready = whenPlayable(media, PATIENT);
     media.fail();
     await expect(ready).rejects.toThrow("cannot play");
   });
 
   it("fails on media without a known length", async () => {
     const media = new FakeMedia();
-    const ready = whenPlayable(media);
+    const ready = whenPlayable(media, PATIENT);
     media.load(Number.POSITIVE_INFINITY);
     await expect(ready).rejects.toThrow("no duration");
+  });
+
+  it("fails when the browser loads nothing before the deadline", async () => {
+    const deadline = new AbortController();
+    const ready = whenPlayable(new FakeMedia(), deadline.signal);
+    deadline.abort();
+    await expect(ready).rejects.toThrow("in time");
+  });
+
+  it("fails at once when the deadline has already passed", async () => {
+    await expect(whenPlayable(new FakeMedia(), AbortSignal.abort())).rejects.toThrow("in time");
+  });
+
+  it("stays ready when the deadline passes after the data arrived", async () => {
+    const deadline = new AbortController();
+    const media = new FakeMedia();
+    const ready = whenPlayable(media, deadline.signal);
+    media.load(12);
+    deadline.abort();
+    await expect(ready).resolves.toBeUndefined();
   });
 });
 

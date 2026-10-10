@@ -74,7 +74,15 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           printf 'Host spectra\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  BatchMode yes\n' \
             "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
-      - name: upload compose file, monitoring configs and environment
+      - name: check docker compose on the server
+        run: |
+          version=$(ssh spectra 'docker compose version --short')
+          version="${version#v}"
+          if [ "$(printf '%s\n' 2.24.4 "$version" | sort -V | head -n 1)" != 2.24.4 ]; then
+            echo "::error::the compose files need docker compose 2.24.4 or newer, the server has $version"
+            exit 1
+          fi
+      - name: upload compose files, monitoring configs and environment
         env:
           SPECTRA_LOG_LEVEL: ${{ vars.SPECTRA_LOG_LEVEL }}
           SPECTRA_API_MEMORY_LIMIT: ${{ vars.SPECTRA_API_MEMORY_LIMIT }}
@@ -93,6 +101,7 @@ jobs:
         run: |
           environment_file="$RUNNER_TEMP/spectra.env"
           install -m 600 /dev/null "$environment_file"
+          echo 'COMPOSE_FILE=compose.yaml:compose.hosted.yaml:compose.prod.yaml' >> "$environment_file"
           echo 'COMPOSE_PROFILES=monitoring' >> "$environment_file"
           for name in SPECTRA_IMAGE SPECTRA_WEB_IMAGE SPECTRA_DOMAIN SPECTRA_HTTP_PORT SPECTRA_HTTPS_PORT \
             SPECTRA_LOG_LEVEL SPECTRA_API_MEMORY_LIMIT SPECTRA_WORKER_MEMORY_LIMIT SPECTRA_UPLOADS_PER_HOUR \
@@ -111,12 +120,12 @@ jobs:
             esac
             printf "%s='%s'\n" "$name" "$value" >> "$environment_file"
           done
-          ssh spectra 'mkdir -p spectra'
-          scp compose.prod.yaml spectra:spectra/compose.yaml
-          ssh spectra 'rm -rf spectra/deploy'
-          scp -r deploy spectra:spectra/
-          ssh spectra 'umask 077 && cat > spectra/.env.next && mv spectra/.env.next spectra/.env' < "$environment_file"
+          ssh spectra 'mkdir -p spectra && rm -rf spectra/.release && mkdir spectra/.release'
+          scp compose.yaml compose.hosted.yaml compose.prod.yaml spectra:spectra/.release/
+          scp -r deploy spectra:spectra/.release/
+          ssh spectra 'umask 077 && cat > spectra/.release/.env' < "$environment_file"
           rm "$environment_file"
+          ssh spectra 'cd spectra && rm -rf deploy && mv .release/compose.yaml .release/compose.hosted.yaml .release/compose.prod.yaml .release/deploy .release/.env . && rmdir .release'
       - name: pull and start
         env:
           REGISTRY_TOKEN: ${{ github.token }}

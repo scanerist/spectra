@@ -1,5 +1,3 @@
-name: spectra
-
 x-service: &service
   restart: unless-stopped
   security_opt:
@@ -10,91 +8,42 @@ x-service: &service
       max-size: 10m
       max-file: "3"
 
+x-production-environment: &production-environment
+  SPECTRA_LOG_FORMAT: json
+  SPECTRA_FORWARDED_ALLOW_IPS: "*"
+  SPECTRA_UPLOADS_PER_HOUR: ${SPECTRA_UPLOADS_PER_HOUR:-20}
+  SPECTRA_NETWORK_UPLOADS_PER_HOUR: ${SPECTRA_NETWORK_UPLOADS_PER_HOUR:-60}
+  SPECTRA_TOTAL_UPLOADS_PER_HOUR: ${SPECTRA_TOTAL_UPLOADS_PER_HOUR:-600}
+
 x-spectra: &spectra
-  <<: *service
   image: ${SPECTRA_IMAGE:?set SPECTRA_IMAGE in the production environment on GitHub}
-  read_only: true
-  tmpfs:
-    - /tmp:size=640m
-  cap_drop:
-    - ALL
-  environment:
-    SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
-    SPECTRA_LOG_FORMAT: json
-    SPECTRA_MODE: hosted
-    SPECTRA_FORWARDED_ALLOW_IPS: "*"
-    SPECTRA_UPLOADS_PER_HOUR: ${SPECTRA_UPLOADS_PER_HOUR:-20}
-    SPECTRA_NETWORK_UPLOADS_PER_HOUR: ${SPECTRA_NETWORK_UPLOADS_PER_HOUR:-60}
-    SPECTRA_TOTAL_UPLOADS_PER_HOUR: ${SPECTRA_TOTAL_UPLOADS_PER_HOUR:-600}
-    SPECTRA_METRICS_PORT: 9100
-    SPECTRA_POSTGRES_HOST: postgres
-    SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
-    SPECTRA_REDIS_HOST: redis
-    SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?}
-    SPECTRA_S3_URL: http://s3:7070
-    SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
-    SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+  environment: *production-environment
   mem_limit: ${SPECTRA_API_MEMORY_LIMIT:-2g}
   pids_limit: 256
 
 services:
   migrate:
     <<: *spectra
-    command: ["spectra-migrate"]
-    restart: "no"
-    networks:
-      - backend
-    healthcheck:
-      disable: true
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      s3:
-        condition: service_healthy
+    build: !reset null
 
   api:
     <<: *spectra
-    networks:
-      - proxy
-      - backend
-    stop_grace_period: 30s
-    healthcheck:
-      start_period: 10s
-      start_interval: 2s
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+    build: !reset null
 
   worker:
     <<: *spectra
-    command: ["spectra-worker"]
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "spectra-worker-healthcheck"]
-      start_period: 10s
-      start_interval: 2s
-    stop_grace_period: 60s
+    build: !reset null
     mem_limit: ${SPECTRA_WORKER_MEMORY_LIMIT:-2g}
-    pids_limit: 256
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
 
-  caddy:
-    <<: *service
+  web:
     image: ${SPECTRA_WEB_IMAGE:?set SPECTRA_WEB_IMAGE in the production environment on GitHub}
+    build: !reset null
     environment:
       SPECTRA_DOMAIN: ${SPECTRA_DOMAIN:?set SPECTRA_DOMAIN in the production environment on GitHub}
-    ports:
+    ports: !override
       - "${SPECTRA_HTTP_PORT:?set SPECTRA_HTTP_PORT in the production environment on GitHub}:80"
       - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443"
       - "${SPECTRA_HTTPS_PORT:?set SPECTRA_HTTPS_PORT in the production environment on GitHub}:443/udp"
-    networks:
-      - edge
-      - proxy
     read_only: true
     tmpfs:
       - /tmp
@@ -107,9 +56,28 @@ services:
     volumes:
       - caddy-data:/data
       - caddy-config:/config
-    depends_on:
-      api:
-        condition: service_healthy
+
+  postgres:
+    mem_limit: ${SPECTRA_POSTGRES_MEMORY_LIMIT:-512m}
+    pids_limit: 256
+
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?}
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - noeviction
+    mem_limit: ${SPECTRA_REDIS_MEMORY_LIMIT:-256m}
+    pids_limit: 128
+
+  s3:
+    mem_limit: ${SPECTRA_S3_MEMORY_LIMIT:-512m}
+    pids_limit: 128
 
   prometheus:
     <<: *service
@@ -166,91 +134,12 @@ services:
     depends_on:
       - prometheus
 
-  postgres:
-    <<: *service
-    image: postgres:18.6-alpine
-    environment:
-      POSTGRES_DB: spectra
-      POSTGRES_USER: spectra
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
-    networks:
-      - backend
-    mem_limit: ${SPECTRA_POSTGRES_MEMORY_LIMIT:-512m}
-    pids_limit: 256
-    volumes:
-      - postgres:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready --username=spectra --dbname=spectra"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  redis:
-    <<: *service
-    image: redis:8.8.3-alpine
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --requirepass
-      - ${REDIS_PASSWORD:?}
-      - --maxmemory
-      - 192mb
-      - --maxmemory-policy
-      - noeviction
-    environment:
-      REDISCLI_AUTH: ${REDIS_PASSWORD:?}
-    networks:
-      - backend
-    mem_limit: ${SPECTRA_REDIS_MEMORY_LIMIT:-256m}
-    pids_limit: 128
-    volumes:
-      - redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  s3:
-    <<: *service
-    image: versity/versitygw:v1.8.0
-    environment:
-      VGW_BACKEND: posix
-      VGW_BACKEND_ARGS: /data/s3
-      VGW_IAM_DIR: /data/iam
-      VGW_PORT: ":7070"
-      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?}
-      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?}
-    networks:
-      - backend
-    cap_drop:
-      - ALL
-    mem_limit: ${SPECTRA_S3_MEMORY_LIMIT:-512m}
-    pids_limit: 128
-    volumes:
-      - s3-objects:/data/s3
-      - s3-iam:/data/iam
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:7070/ 2>&1 | grep -q HTTP/"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
 networks:
   edge:
     enable_ipv6: true
-  proxy:
-    internal: true
-  backend:
-    internal: true
   monitoring:
 
 volumes:
-  postgres:
-  redis:
-  s3-objects:
-  s3-iam:
   caddy-data:
   caddy-config:
   prometheus:

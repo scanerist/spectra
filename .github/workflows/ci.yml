@@ -132,7 +132,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     env:
-      COMPOSE_FILE: compose.prod.yaml
+      COMPOSE_FILE: compose.yaml:compose.hosted.yaml:compose.prod.yaml
       COMPOSE_PROFILES: monitoring
       SPECTRA_IMAGE: spectra:local
       SPECTRA_WEB_IMAGE: spectra-web:local

@@ -6,6 +6,7 @@ from typing import Final
 from spectra.tracks.domain.errors import InvalidQuotaError
 
 TOTAL_SCOPE_KEY: Final = "total"
+MIN_WAIT_S: Final = 0.001
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -53,4 +54,5 @@ class UploadQuotaPolicy:
         if not blocking_uploads_s:
             return QuotaDecision(allowed=True, retry_after_s=0.0)
         free_at_s = max(blocking_uploads_s) + self.window_s
-        return QuotaDecision(allowed=False, retry_after_s=min(free_at_s - now_s, self.window_s))
+        wait_s = min(max(free_at_s - now_s, MIN_WAIT_S), self.window_s)
+        return QuotaDecision(allowed=False, retry_after_s=wait_s)

@@ -41,6 +41,13 @@ def test_a_refused_upload_waits_until_the_oldest_upload_of_every_full_scope_leav
     assert decision == QuotaDecision(allowed=False, retry_after_s=3_500.0)
 
 
+def test_a_refusal_always_asks_to_wait_a_little() -> None:
+    oldest_s = 1_617.108553965816
+    decision = POLICY.decide(blocking_uploads_s=[oldest_s], now_s=oldest_s + (HOUR_S - 1e-13))
+    assert not decision.allowed
+    assert decision.retry_after_s > 0.0
+
+
 @given(
     oldest_s=st.floats(min_value=0.0, max_value=HOUR_S, allow_nan=False),
     elapsed_s=st.floats(min_value=0.0, max_value=HOUR_S, exclude_max=True, allow_nan=False),

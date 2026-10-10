@@ -9,6 +9,7 @@ from sqlalchemy import make_url, text
 from spectra.bootstrap.hosted import open_hosted
 from spectra.bootstrap.settings import HostedSettings, PostgresSettings, RedisSettings, S3Settings
 from spectra.tracks.adapters.redis_jobs import JOBS_STREAM
+from spectra.tracks.adapters.redis_quota import QUOTA_PREFIX
 from spectra.tracks.adapters.s3 import S3Endpoint, s3_client
 
 if TYPE_CHECKING:
@@ -59,7 +60,8 @@ async def wipe_services(settings: HostedSettings) -> None:
     async with open_hosted(settings, consumer="wipe") as adapters:
         async with adapters.engine.begin() as connection:
             await connection.execute(text("DROP TABLE IF EXISTS tracks, alembic_version"))
-        await adapters.redis.delete(JOBS_STREAM)
+        quota_keys = [key async for key in adapters.redis.scan_iter(f"{QUOTA_PREFIX}*")]
+        await adapters.redis.delete(JOBS_STREAM, *quota_keys)
     remove_bucket(settings)
 
 

@@ -62,9 +62,11 @@ Settings → Environments → `production`:
 | `SPECTRA_HTTP_PORT` | `80`: нужен Let's Encrypt и для редиректа на HTTPS |
 | `SPECTRA_HTTPS_PORT` | `443` |
 | `SPECTRA_LOG_LEVEL` | необязательно, по умолчанию `info` |
-| `SPECTRA_API_MEMORY_LIMIT` | необязательно, по умолчанию `2g` (так же ограничен `migrate`): загрузка в 256 МиБ на пике занимает в api около трёх своих размеров |
+| `SPECTRA_API_MEMORY_LIMIT` | необязательно, по умолчанию `2g` (так же ограничен `migrate`): загрузка в 256 МиБ на пике занимает в api около двух своих размеров (временный файл в tmpfs до 640 МиБ и сам файл), одновременно принимаются две |
 | `SPECTRA_WORKER_MEMORY_LIMIT` | необязательно, по умолчанию `2g` |
-| `SPECTRA_UPLOADS_PER_HOUR` | необязательно, по умолчанию `20`: загрузок в час с одного IP |
+| `SPECTRA_UPLOADS_PER_HOUR` | необязательно, по умолчанию `20`: загрузок за последний час с одного адреса (IPv4 или сети IPv6 /64) |
+| `SPECTRA_NETWORK_UPLOADS_PER_HOUR` | необязательно, по умолчанию `60`: с одной сети IPv6 /48 |
+| `SPECTRA_TOTAL_UPLOADS_PER_HOUR` | необязательно, по умолчанию `600`: со всего мира вместе |
 | `SPECTRA_GRAFANA_BIND_ADDRESS` | `127.0.0.1`: Grafana открывается через SSH-туннель |
 | `SPECTRA_GRAFANA_PORT` | порт Grafana на сервере, например `3000` |
 | `SPECTRA_METRICS_RETENTION` | необязательно, по умолчанию `15d`: сколько Prometheus хранит метрики |
@@ -85,7 +87,18 @@ Compose задаёт их сам, перечислены для запуска �
 | `SPECTRA_S3_URL`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY`, `_BUCKET` | —, `us-east-1`, —, —, `spectra` | S3 |
 | `SPECTRA_RETENTION_DAYS` | `30` | сколько дней хранить разбор после последнего открытия |
 | `SPECTRA_SWEEP_INTERVAL_S` | `3600` | как часто воркер ищет устаревшие разборы |
-| `SPECTRA_UPLOADS_PER_HOUR` | `20` | загрузок в час с одного IP-адреса, сверх — `429 rate_limited` |
+| `SPECTRA_UPLOADS_PER_HOUR` | `20` | загрузок за последний час (окно скользит) с одного адреса: IPv4 или сети IPv6 /64; сверх — `429 rate_limited` |
+| `SPECTRA_NETWORK_UPLOADS_PER_HOUR` | `60` | то же для сети IPv6 /48, чтобы блок из туннельного брокера не давал тысячи отдельных лимитов |
+| `SPECTRA_TOTAL_UPLOADS_PER_HOUR` | `600` | то же для всех вместе |
+| `SPECTRA_MAX_UPLOAD_BYTES` | `268435456` | размер файла, сверх — `413 file_too_large`; Caddy режет тело на 257 МиБ |
+| `SPECTRA_MAX_DURATION_S` | `1800` | длительность трека |
+| `SPECTRA_MAX_DECODED_SAMPLES` | `345600000` | длительность × частота × каналы: 30 минут стерео 96 кГц; сверх — `413`. Частота выше 192 кГц и больше 8 каналов — `415` |
+| `SPECTRA_MAX_PENDING_ANALYSES` | `4` | треков в очереди и в работе, сверх — `503 busy` |
+| `SPECTRA_MAX_CONCURRENT_UPLOADS` | `2` | загрузок одновременно, лишняя сразу получает `503 busy` и не тратит лимит |
+| `SPECTRA_MAX_EVENT_STREAMS` | `64` | открытых потоков SSE на весь api, сверх — `503 busy`; столько же соединений у отдельного пула Redis для подписок |
+| `SPECTRA_MAX_EVENT_STREAMS_PER_CLIENT` | `4` | потоков SSE с одного адреса, сверх — `429` |
+| `SPECTRA_EVENT_STREAM_LIFETIME_S` | `300` | сколько живёт поток SSE, потом браузер переподключается |
+| `SPECTRA_MAX_TIMELINE_DOWNLOADS` | `16` | таймлайнов, отдаваемых одновременно, сверх — `503 busy` |
 | `SPECTRA_LOG_FORMAT` | `text` | `json` — одна строка JSON на запись; в проде включено |
 | `SPECTRA_METRICS_PORT` | нет | порт `/metrics` для Prometheus; в compose `9100`, наружу не публикуется |
 | `SPECTRA_FORWARDED_ALLOW_IPS` | `127.0.0.1` | от каких прокси верить `X-Forwarded-For`; в проде `*`, потому что api доступен только через Caddy, а Caddy отбрасывает присланный клиентом заголовок |

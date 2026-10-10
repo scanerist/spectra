@@ -44,7 +44,7 @@ EVENT_STREAMS_STATE: Final = "event_streams"
 UPLOAD_SLOTS_STATE: Final = "upload_slots"
 TIMELINE_SLOTS_STATE: Final = "timeline_slots"
 TIMELINE_CACHE_CONTROL: Final = "private, max-age=3600"
-TIMELINE_SEND_DEADLINE_S: Final = 120.0
+TIMELINE_SEND_DEADLINE_S: Final = 300.0
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
 IPV6_CLIENT_PREFIX: Final = 64

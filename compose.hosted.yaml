@@ -1,0 +1,153 @@
+x-service: &service
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+x-hosted-environment: &hosted-environment
+  SPECTRA_MODE: hosted
+  SPECTRA_METRICS_PORT: 9100
+  SPECTRA_POSTGRES_HOST: postgres
+  SPECTRA_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}
+  SPECTRA_REDIS_HOST: redis
+  SPECTRA_REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, see .env.example}
+  SPECTRA_S3_URL: http://s3:7070
+  SPECTRA_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env, see .env.example}
+  SPECTRA_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env, see .env.example}
+
+x-spectra: &spectra
+  <<: *service
+  image: spectra:local
+  build: .
+  read_only: true
+  tmpfs:
+    - /tmp:size=640m
+  cap_drop:
+    - ALL
+  environment:
+    SPECTRA_LOG_LEVEL: ${SPECTRA_LOG_LEVEL:-info}
+    <<: *hosted-environment
+
+services:
+  api:
+    environment: *hosted-environment
+    networks:
+      - proxy
+      - backend
+    stop_grace_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    networks:
+      - edge
+      - proxy
+
+  migrate:
+    <<: *spectra
+    command: ["spectra-migrate"]
+    restart: "no"
+    networks:
+      - backend
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+
+  worker:
+    <<: *spectra
+    command: ["spectra-worker"]
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "spectra-worker-healthcheck"]
+      start_period: 10s
+      start_interval: 2s
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  postgres:
+    <<: *service
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: spectra
+      POSTGRES_USER: spectra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}
+    networks:
+      - backend
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=spectra --dbname=spectra"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    <<: *service
+    image: redis:8.8.3-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, see .env.example}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, see .env.example}
+    networks:
+      - backend
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  s3:
+    <<: *service
+    image: versity/versitygw:v1.8.0
+    environment:
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARGS: /data/s3
+      VGW_IAM_DIR: /data/iam
+      VGW_PORT: ":7070"
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env, see .env.example}
+      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env, see .env.example}
+    networks:
+      - backend
+    cap_drop:
+      - ALL
+    volumes:
+      - s3-objects:/data/s3
+      - s3-iam:/data/iam
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:7070/ 2>&1 | grep -q HTTP/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  edge:
+  proxy:
+    internal: true
+  backend:
+    internal: true
+
+volumes:
+  postgres:
+  redis:
+  s3-objects:
+  s3-iam:

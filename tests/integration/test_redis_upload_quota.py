@@ -67,14 +67,21 @@ async def test_counters_expire_with_their_window(client: Redis) -> None:
 
 async def test_a_refunded_upload_frees_its_place(client: Redis) -> None:
     single = quota(client, uploads=1, window_s=3_600.0)
-    await single.spend("1.2.3.4")
-    await single.refund("1.2.3.4")
+    charged = await single.spend("1.2.3.4")
+    await single.refund("1.2.3.4", window=charged.window)
     assert (await single.spend("1.2.3.4")).allowed
     assert not (await single.spend("1.2.3.4")).allowed
 
 
 async def test_a_refund_without_uploads_changes_nothing(client: Redis) -> None:
     single = quota(client, uploads=1, window_s=3_600.0)
-    await single.refund("1.2.3.4")
+    await single.refund("1.2.3.4", window=0)
     assert (await single.spend("1.2.3.4")).allowed
+    assert not (await single.spend("1.2.3.4")).allowed
+
+
+async def test_a_refund_for_an_earlier_window_leaves_the_current_one_alone(client: Redis) -> None:
+    single = quota(client, uploads=1, window_s=3_600.0)
+    current = await single.spend("1.2.3.4")
+    await single.refund("1.2.3.4", window=current.window - 1)
     assert not (await single.spend("1.2.3.4")).allowed

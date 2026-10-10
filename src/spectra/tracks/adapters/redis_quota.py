@@ -25,19 +25,19 @@ class RedisUploadQuota:
 
     async def spend(self, client: str) -> QuotaDecision:
         now_s = await self._now_s()
-        key = self._key(client, now_s)
+        key = self._key(client, self._policy.window_of(now_s))
         async with self._redis.pipeline(transaction=True) as pipeline:
             pipeline.incr(key)
             pipeline.expire(key, math.ceil(self._policy.window_s), nx=True)
             used, _ = await pipeline.execute()
         return self._policy.decide(used=int(used), now_s=now_s)
 
-    async def refund(self, client: str) -> None:
-        await self._refund(keys=[self._key(client, await self._now_s())])
+    async def refund(self, client: str, *, window: int) -> None:
+        await self._refund(keys=[self._key(client, window)])
 
     async def _now_s(self) -> float:
         seconds, microseconds = await self._redis.time()
         return seconds + microseconds / 1_000_000
 
-    def _key(self, client: str, now_s: float) -> str:
-        return f"{self._prefix}{self._policy.window_of(now_s)}:{client}"
+    def _key(self, client: str, window: int) -> str:
+        return f"{self._prefix}{window}:{client}"

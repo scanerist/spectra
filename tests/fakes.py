@@ -113,16 +113,17 @@ def fake_timeline(analysis: TrackAnalysis) -> bytes:
 
 
 class UnlimitedQuota:
-    def __init__(self) -> None:
+    def __init__(self, *, window: int = 0) -> None:
+        self._window = window
         self.clients: list[str] = []
-        self.refunds: list[str] = []
+        self.refunds: list[tuple[str, int]] = []
 
-    async def refund(self, client: str) -> None:
-        self.refunds.append(client)
+    async def refund(self, client: str, *, window: int) -> None:
+        self.refunds.append((client, window))
 
     async def spend(self, client: str) -> QuotaDecision:
         self.clients.append(client)
-        return QuotaDecision(allowed=True, retry_after_s=0.0)
+        return QuotaDecision(allowed=True, retry_after_s=0.0, window=self._window)
 
 
 class ExhaustedQuota:
@@ -133,9 +134,9 @@ class ExhaustedQuota:
 
     async def spend(self, client: str) -> QuotaDecision:
         self.clients.append(client)
-        return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
+        return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s, window=0)
 
-    async def refund(self, client: str) -> None:
+    async def refund(self, client: str, *, window: int) -> None:
         pass
 
 

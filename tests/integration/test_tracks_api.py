@@ -167,7 +167,7 @@ def test_upload_while_the_queue_is_full_is_busy(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("b.wav", DATA, "audio/wav")})
     assert response.status_code == 503
     assert response.json()["error"] == "busy"
-    assert api.clients.refunds == ["testclient"]
+    assert api.clients.refunds == [("testclient", 0)]
 
 
 def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:

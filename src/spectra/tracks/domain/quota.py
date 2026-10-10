@@ -8,6 +8,13 @@ from spectra.tracks.domain.errors import InvalidQuotaError
 class QuotaDecision:
     allowed: bool
     retry_after_s: float
+    window: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UploadCharge:
+    client: str
+    window: int
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -25,7 +32,8 @@ class UploadQuotaPolicy:
         return math.floor(now_s / self.window_s)
 
     def decide(self, *, used: int, now_s: float) -> QuotaDecision:
+        window = self.window_of(now_s)
         if used <= self.uploads:
-            return QuotaDecision(allowed=True, retry_after_s=0.0)
-        window_end_s = (self.window_of(now_s) + 1) * self.window_s
-        return QuotaDecision(allowed=False, retry_after_s=window_end_s - now_s)
+            return QuotaDecision(allowed=True, retry_after_s=0.0, window=window)
+        window_end_s = (window + 1) * self.window_s
+        return QuotaDecision(allowed=False, retry_after_s=window_end_s - now_s, window=window)

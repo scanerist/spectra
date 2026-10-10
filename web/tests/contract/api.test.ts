@@ -97,7 +97,7 @@ describe("uploading", () => {
   it("posts the file as the multipart part named file", async () => {
     const { fetchFn, calls } = answering(() => json({ track_id: "9f2c41d07a3b55e1" }, 202));
     const api = createApi(fetchFn, () => new FakeStream());
-    const trackId = await api.upload(new Blob(["RIFF"]), "kicks.wav");
+    const trackId = await api.upload(new Blob(["RIFF"]));
     expect(trackId).toBe("9f2c41d07a3b55e1");
     expect(calls[0]?.url).toBe("/tracks");
     expect(calls[0]?.init?.method).toBe("POST");
@@ -105,19 +105,28 @@ describe("uploading", () => {
     expect(form instanceof FormData && form.get("file") instanceof Blob).toBe(true);
   });
 
+  it("keeps the name of the file on the listener's computer", async () => {
+    const { fetchFn, calls } = answering(() => json({ track_id: "9f2c41d07a3b55e1" }, 202));
+    const api = createApi(fetchFn, () => new FakeStream());
+    await api.upload(new File(["RIFF"], "Personal Mix 2026.wav"));
+    const form = calls[0]?.init?.body;
+    const part = form instanceof FormData ? form.get("file") : null;
+    expect(part instanceof File && part.name).toBe("track");
+  });
+
   it("surfaces the contract error code and Retry-After", async () => {
     const limited = json({ error: "rate_limited", message: "too many" }, 429, {
       "retry-after": "42",
     });
     const api = createApi(answering(() => limited).fetchFn, () => new FakeStream());
-    const error = await rejection(api.upload(new Blob(["RIFF"]), "kicks.wav"));
+    const error = await rejection(api.upload(new Blob(["RIFF"])));
     expect([error.code, error.retryAfterS]).toEqual(["rate_limited", 42]);
   });
 
   it("treats an unknown error code as internal", async () => {
     const odd = json({ error: "teapot", message: "short and stout" }, 418);
     const api = createApi(answering(() => odd).fetchFn, () => new FakeStream());
-    expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("internal");
+    expect((await rejection(api.upload(new Blob(["x"])))).code).toBe("internal");
   });
 
   it("reports an unreachable engine as unavailable", async () => {
@@ -125,7 +134,7 @@ describe("uploading", () => {
       throw new TypeError("failed to fetch");
     };
     const api = createApi(offline, () => new FakeStream());
-    expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("unavailable");
+    expect((await rejection(api.upload(new Blob(["x"])))).code).toBe("unavailable");
   });
 
   it("lets an abandoned upload stop with the abandoning reason", async () => {
@@ -137,19 +146,19 @@ describe("uploading", () => {
       throw reason;
     };
     const api = createApi(fetchFn, () => new FakeStream());
-    await expect(api.upload(new Blob(["x"]), "x.wav", abandoned.signal)).rejects.toBe(reason);
+    await expect(api.upload(new Blob(["x"]), abandoned.signal)).rejects.toBe(reason);
   });
 
   it.each([502, 503, 504])("reports a %i proxy page as unavailable", async (status) => {
     const gateway = () => new Response("<html>bad gateway</html>", { status });
     const api = createApi(answering(gateway).fetchFn, () => new FakeStream());
-    expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("unavailable");
+    expect((await rejection(api.upload(new Blob(["x"])))).code).toBe("unavailable");
   });
 
   it("reports any other page without an error body as internal", async () => {
     const odd = () => new Response("<html>teapot</html>", { status: 418 });
     const api = createApi(answering(odd).fetchFn, () => new FakeStream());
-    expect((await rejection(api.upload(new Blob(["x"]), "x.wav"))).code).toBe("internal");
+    expect((await rejection(api.upload(new Blob(["x"])))).code).toBe("internal");
   });
 });
 

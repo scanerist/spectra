@@ -65,11 +65,12 @@ export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type OpenEventStream = (url: string) => EventStream;
 
 const CLOSED = 2;
+const UPLOAD_FILENAME = "track";
 const GATEWAY_STATUSES: readonly number[] = [502, 503, 504];
 
 export interface Api {
   protocol(signal?: AbortSignal): Promise<number>;
-  upload(file: Blob, filename: string, signal?: AbortSignal): Promise<string>;
+  upload(file: Blob, signal?: AbortSignal): Promise<string>;
   track(trackId: string): Promise<TrackInfo>;
   timeline(trackId: string, signal?: AbortSignal): Promise<Timeline>;
   follow(trackId: string, onEvent: (event: TrackEvent) => void): () => void;
@@ -88,9 +89,9 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
       const response = await request("/health", { signal: signal ?? null });
       return field(await response.json(), "protocol", isNumber);
     },
-    async upload(file, filename, signal) {
+    async upload(file, signal) {
       const form = new FormData();
-      form.append("file", file, filename);
+      form.append("file", file, UPLOAD_FILENAME);
       const response = await request("/tracks", {
         method: "POST",
         body: form,

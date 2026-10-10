@@ -54,7 +54,7 @@ export async function loadTrack<A>(
   signal.throwIfAborted();
   const prepared = settle(deps.prepare(file));
   try {
-    const trackId = await deps.api.upload(file, file.name, signal);
+    const trackId = await deps.api.upload(file, signal);
     signal.throwIfAborted();
     onProgress(UPLOAD_SHARE, STAGE_LABELS.decoding);
     const info = await analysed(deps.api, trackId, onProgress, signal);

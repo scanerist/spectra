@@ -23,6 +23,7 @@ from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.ports import UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.blobs import timeline_key
+from spectra.tracks.domain.quota import UploadSource
 from spectra.tracks.domain.track import (
     Analysing,
     Failed,
@@ -93,7 +94,7 @@ def test_upload_answers_202_with_the_track_id(api: Api) -> None:
 
 def test_uploads_are_counted_per_client_address(api: Api) -> None:
     api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
-    assert api.clients.clients == ["testclient"]
+    assert api.clients.clients == [UploadSource(address="testclient", network="testclient")]
 
 
 def test_an_exhausted_quota_is_rate_limited_with_retry_after() -> None:
@@ -199,7 +200,7 @@ def test_upload_while_the_queue_is_full_is_busy(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("b.wav", DATA, "audio/wav")})
     assert response.status_code == 503
     assert response.json()["error"] == "busy"
-    assert api.clients.refunds == ["testclient"]
+    assert api.clients.refunds == [UploadSource(address="testclient", network="testclient")]
 
 
 def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:

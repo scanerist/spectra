@@ -1,11 +1,11 @@
 import asyncio
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from spectra.shared.clock import Clock
 from spectra.tracks.application.ports import AnalysisJob
-from spectra.tracks.domain.quota import QuotaDecision, UploadQuotaPolicy
+from spectra.tracks.domain.quota import QuotaDecision, UploadQuotaPolicy, UploadSource
 from spectra.tracks.domain.track import TrackId, TrackStatus, is_final
 
 
@@ -105,18 +105,31 @@ class InMemoryUploadQuota:
     def __init__(self, *, policy: UploadQuotaPolicy, clock: Clock) -> None:
         self._policy = policy
         self._clock = clock
-        self._window = 0
-        self._used: dict[str, int] = {}
+        self._uploads_s: dict[str, deque[float]] = {}
 
-    async def spend(self, client: str) -> QuotaDecision:
+    async def spend(self, source: UploadSource) -> QuotaDecision:
         now_s = self._clock.now_s()
-        window = self._policy.window_of(now_s)
-        if window != self._window:
-            self._window = window
-            self._used.clear()
-        self._used[client] = self._used.get(client, 0) + 1
-        return self._policy.decide(used=self._used[client], now_s=now_s)
+        scopes = self._policy.scopes(source)
+        logs = [self._recent(scope.key, now_s) for scope in scopes]
+        full = [log[0] for scope, log in zip(scopes, logs, strict=True) if len(log) >= scope.limit]
+        decision = self._policy.decide(oldest_in_full_scopes_s=full, now_s=now_s)
+        if decision.allowed:
+            for log in logs:
+                log.append(now_s)
+        return decision
 
-    async def refund(self, client: str) -> None:
-        if self._policy.window_of(self._clock.now_s()) == self._window and self._used.get(client):
-            self._used[client] -= 1
+    async def refund(self, source: UploadSource) -> None:
+        own, *shared = [
+            self._recent(scope.key, self._clock.now_s()) for scope in self._policy.scopes(source)
+        ]
+        if not own:
+            return
+        upload_s = own.pop()
+        for log in shared:
+            log.remove(upload_s)
+
+    def _recent(self, key: str, now_s: float) -> deque[float]:
+        log = self._uploads_s.setdefault(key, deque())
+        while log and log[0] <= now_s - self._policy.window_s:
+            log.popleft()
+        return log

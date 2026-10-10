@@ -7,7 +7,7 @@ from spectra.analysis.domain.track_analysis import TrackAnalysis
 from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.domain.quota import QuotaDecision
+from spectra.tracks.domain.quota import QuotaDecision, UploadSource
 from spectra.tracks.domain.track import TrackId, TrackStatus
 
 
@@ -130,14 +130,14 @@ def fake_timeline(analysis: TrackAnalysis) -> bytes:
 
 class UnlimitedQuota:
     def __init__(self) -> None:
-        self.clients: list[str] = []
-        self.refunds: list[str] = []
+        self.clients: list[UploadSource] = []
+        self.refunds: list[UploadSource] = []
 
-    async def refund(self, client: str) -> None:
-        self.refunds.append(client)
+    async def refund(self, source: UploadSource) -> None:
+        self.refunds.append(source)
 
-    async def spend(self, client: str) -> QuotaDecision:
-        self.clients.append(client)
+    async def spend(self, source: UploadSource) -> QuotaDecision:
+        self.clients.append(source)
         return QuotaDecision(allowed=True, retry_after_s=0.0)
 
 
@@ -145,13 +145,13 @@ class ExhaustedQuota:
     def __init__(self, *, retry_after_s: float) -> None:
         self._retry_after_s = retry_after_s
 
-        self.clients: list[str] = []
+        self.clients: list[UploadSource] = []
 
-    async def spend(self, client: str) -> QuotaDecision:
-        self.clients.append(client)
+    async def spend(self, source: UploadSource) -> QuotaDecision:
+        self.clients.append(source)
         return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
 
-    async def refund(self, client: str) -> None:
+    async def refund(self, source: UploadSource) -> None:
         pass
 
 

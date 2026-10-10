@@ -33,6 +33,7 @@ from spectra.tracks.domain.errors import (
     EmptyUploadError,
     FileTooLargeError,
 )
+from spectra.tracks.domain.quota import UploadSource
 from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackSummary
 
 TRACK_SERVICE_STATE: Final = "track_service"
@@ -42,6 +43,9 @@ UPLOAD_SLOTS_STATE: Final = "upload_slots"
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
 IPV6_CLIENT_PREFIX: Final = 64
+IPV6_NETWORK_PREFIX: Final = 48
+
+type PeerAddress = ipaddress.IPv4Address | ipaddress.IPv6Address | str
 
 
 class HealthReport(BaseModel):
@@ -108,7 +112,7 @@ type Streams = Annotated[EventStreams, Depends(event_streams)]
 type UploadSlots = Annotated[Slots, Depends(upload_slots)]
 
 
-def client_address(request: Request) -> str:
+def peer_address(request: Request) -> PeerAddress:
     if request.client is None:
         return UNKNOWN_CLIENT
     try:
@@ -117,10 +121,27 @@ def client_address(request: Request) -> str:
         return request.client.host
     match address:
         case ipaddress.IPv6Address(ipv4_mapped=ipaddress.IPv4Address() as ipv4):
-            return str(ipv4)
-        case ipaddress.IPv6Address():
-            return str(ipaddress.ip_network(f"{address}/{IPV6_CLIENT_PREFIX}", strict=False))
-    return str(address)
+            return ipv4
+    return address
+
+
+def network_of(address: ipaddress.IPv6Address, prefix: int) -> str:
+    return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
+
+
+def upload_source(request: Request) -> UploadSource:
+    match peer_address(request):
+        case ipaddress.IPv6Address() as ipv6:
+            return UploadSource(
+                address=network_of(ipv6, IPV6_CLIENT_PREFIX),
+                network=network_of(ipv6, IPV6_NETWORK_PREFIX),
+            )
+        case peer:
+            return UploadSource(address=str(peer), network=str(peer))
+
+
+def client_address(request: Request) -> str:
+    return upload_source(request).address
 
 
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
@@ -146,9 +167,10 @@ async def ready_summary(service: TrackService, track_id: str) -> tuple[TrackId, 
 
 
 async def accept_upload(
-    request: Request, client: str, service: TrackService, admission: UploadAdmission
+    request: Request, service: TrackService, admission: UploadAdmission
 ) -> TrackCreated:
-    await admission.admit(client)
+    source = upload_source(request)
+    await admission.admit(source)
     async with request.form(max_files=1, max_fields=0) as form:
         upload = form.get("file")
         data = await read_upload(
@@ -158,7 +180,7 @@ async def accept_upload(
     try:
         track_id = await service.submit(data)
     except AnalysisQueueFullError:
-        await admission.refund(client)
+        await admission.refund(source)
         raise
     return TrackCreated(track_id=track_id.value)
 
@@ -180,10 +202,9 @@ def create_router() -> APIRouter:
     async def upload_track(
         request: Request, service: Service, admission: Admission, uploads: UploadSlots
     ) -> TrackCreated:
-        client = client_address(request)
-        slot = uploads.take(client)
+        slot = uploads.take(client_address(request))
         try:
-            return await accept_upload(request, client, service, admission)
+            return await accept_upload(request, service, admission)
         finally:
             slot.release()
 

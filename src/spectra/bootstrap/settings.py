@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     max_event_streams_per_client: int = Field(default=4, ge=1)
     event_stream_lifetime_s: float = Field(default=300.0, gt=0.0, allow_inf_nan=False)
     uploads_per_hour: int = Field(default=20, ge=1)
+    network_uploads_per_hour: int = Field(default=60, ge=1)
+    total_uploads_per_hour: int = Field(default=600, ge=1)
     forwarded_allow_ips: str = "127.0.0.1"
     metrics_port: int | None = Field(default=None, ge=0, le=65_535)
     retention_days: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)

@@ -28,6 +28,8 @@ def test_settings_defaults() -> None:
     assert settings.max_decoded_samples == 1_800 * 96_000 * 2
     assert settings.max_pending_analyses == 4
     assert settings.max_concurrent_uploads == 2
+    assert (settings.uploads_per_hour, settings.network_uploads_per_hour) == (20, 60)
+    assert settings.total_uploads_per_hour == 600
     assert settings.max_event_streams == 64
     assert settings.max_event_streams_per_client == 4
     assert settings.event_stream_lifetime_s == 300.0

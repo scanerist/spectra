@@ -1,7 +1,11 @@
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Final
 
 from spectra.tracks.domain.errors import InvalidQuotaError
+
+TOTAL_SCOPE_KEY: Final = "total"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -11,21 +15,42 @@ class QuotaDecision:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class UploadSource:
+    address: str
+    network: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class QuotaScope:
+    key: str
+    limit: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class UploadQuotaPolicy:
-    uploads: int
+    per_address: int
+    per_network: int
+    total: int
     window_s: float
 
     def __post_init__(self) -> None:
-        if self.uploads < 1:
-            raise InvalidQuotaError(f"a quota allows at least one upload, got {self.uploads}")
+        if min(self.per_address, self.per_network, self.total) < 1:
+            raise InvalidQuotaError(
+                "a quota allows at least one upload per address, network and in total, got "
+                f"{self.per_address}, {self.per_network} and {self.total}"
+            )
         if not (math.isfinite(self.window_s) and self.window_s > 0.0):
             raise InvalidQuotaError(f"a quota window must be positive, got {self.window_s}")
 
-    def window_of(self, now_s: float) -> int:
-        return math.floor(now_s / self.window_s)
+    def scopes(self, source: UploadSource) -> tuple[QuotaScope, ...]:
+        return (
+            QuotaScope(key=f"address:{source.address}", limit=self.per_address),
+            QuotaScope(key=f"network:{source.network}", limit=self.per_network),
+            QuotaScope(key=TOTAL_SCOPE_KEY, limit=self.total),
+        )
 
-    def decide(self, *, used: int, now_s: float) -> QuotaDecision:
-        if used <= self.uploads:
+    def decide(self, *, oldest_in_full_scopes_s: Sequence[float], now_s: float) -> QuotaDecision:
+        if not oldest_in_full_scopes_s:
             return QuotaDecision(allowed=True, retry_after_s=0.0)
-        window_end_s = (self.window_of(now_s) + 1) * self.window_s
-        return QuotaDecision(allowed=False, retry_after_s=window_end_s - now_s)
+        free_at_s = max(oldest_in_full_scopes_s) + self.window_s
+        return QuotaDecision(allowed=False, retry_after_s=min(free_at_s - now_s, self.window_s))

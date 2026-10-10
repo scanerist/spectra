@@ -40,7 +40,12 @@ class TrackParts:
 
 
 def upload_quota_policy(settings: Settings) -> UploadQuotaPolicy:
-    return UploadQuotaPolicy(uploads=settings.uploads_per_hour, window_s=HOUR_S)
+    return UploadQuotaPolicy(
+        per_address=settings.uploads_per_hour,
+        per_network=settings.network_uploads_per_hour,
+        total=settings.total_uploads_per_hour,
+        window_s=HOUR_S,
+    )
 
 
 def memory_quota(settings: Settings) -> InMemoryUploadQuota:

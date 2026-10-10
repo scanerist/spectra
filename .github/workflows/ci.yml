@@ -155,11 +155,11 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
       - run: docker compose --file compose.yaml config --quiet
-      - run: docker compose up --detach --wait 2>&1 | tee "$RUNNER_TEMP/up.log"
+      - run: docker compose up --detach --wait --scale worker=2 2>&1 | tee "$RUNNER_TEMP/up.log"
         shell: bash
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
-      - run: test "$(docker compose ps --quiet --status running worker)" != ""
+      - run: test "$(docker compose ps --quiet --status running worker | wc -l)" = 2
       - name: check that caddy proxies the engine with its headers and keeps readiness inside
         shell: bash
         run: |
@@ -169,11 +169,12 @@ jobs:
         run: |
           curl --fail --silent --show-error --insecure https://localhost:8443/ | grep -q '<title>spectra</title>'
           curl --fail --silent --show-error --insecure --head https://localhost:8443/ | grep -qi '^content-security-policy:'
-      - name: check that prometheus scrapes every target
+      - name: check that prometheus scrapes every target and both worker replicas
         run: |
-          query='http://localhost:9090/api/v1/query?query=min(up)'
+          query='http://localhost:9090/api/v1/query'
           for _ in $(seq 30); do
-            if docker compose exec -T prometheus wget -qO- "$query" | grep -q '"1"\]'; then
+            if docker compose exec -T prometheus wget -qO- --post-data 'query=min(up)' "$query" | grep -q '"1"\]' &&
+              docker compose exec -T prometheus wget -qO- --post-data 'query=sum(up{job="worker"})' "$query" | grep -q '"2"\]'; then
               exit 0
             fi
             sleep 2

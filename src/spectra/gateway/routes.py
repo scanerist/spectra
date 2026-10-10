@@ -152,10 +152,6 @@ def upload_source(request: Request) -> UploadSource:
             return UploadSource(address=str(peer), network=str(peer))
 
 
-def client_address(request: Request) -> str:
-    return upload_source(request).address
-
-
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     if upload is None:
         raise EmptyUploadError("the request has no file part")
@@ -229,7 +225,7 @@ def create_router() -> APIRouter:
     async def upload_track(
         request: Request, service: Service, admission: Admission, uploads: UploadSlots
     ) -> TrackCreated:
-        slot = uploads.take(client_address(request))
+        slot = uploads.take(upload_source(request))
         try:
             return await accept_upload(request, service, admission)
         finally:
@@ -246,7 +242,7 @@ def create_router() -> APIRouter:
     ) -> StreamingResponse:
         track = TrackId(track_id)
         await service.status(track)
-        slot = streams.slots.take(client_address(request))
+        slot = streams.slots.take(upload_source(request))
         statuses = until_deadline(service.watch(track), lifetime_s=streams.lifetime_s)
         return StreamingResponse(
             holding(slot, status_events(track, statuses)),
@@ -260,7 +256,7 @@ def create_router() -> APIRouter:
         track_id: str, request: Request, service: Service, timelines: TimelineSlots
     ) -> Response:
         track, _ = await ready_summary(service, track_id)
-        slot = timelines.take(client_address(request))
+        slot = timelines.take(upload_source(request))
         try:
             timeline = await service.timeline(track)
         except BaseException:

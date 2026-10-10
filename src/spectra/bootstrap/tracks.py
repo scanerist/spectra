@@ -30,6 +30,9 @@ HOUR_S: Final = 3_600.0
 EVENT_STREAM_RETRY_AFTER_S: Final = 10.0
 UPLOAD_RETRY_AFTER_S: Final = 5.0
 TIMELINE_RETRY_AFTER_S: Final = 5.0
+UPLOADS_PER_NETWORK: Final = 1
+TIMELINES_PER_ADDRESS: Final = 2
+TIMELINES_PER_NETWORK: Final = 4
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -91,7 +94,8 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
 def event_streams(settings: Settings) -> EventStreams:
     limits = SlotLimits(
         total=settings.max_event_streams,
-        per_client=settings.max_event_streams_per_client,
+        per_address=settings.max_event_streams_per_address,
+        per_network=settings.max_event_streams_per_network,
         retry_after_s=EVENT_STREAM_RETRY_AFTER_S,
     )
     return EventStreams(
@@ -103,7 +107,8 @@ def event_streams(settings: Settings) -> EventStreams:
 def upload_slots(settings: Settings) -> Slots:
     limits = SlotLimits(
         total=settings.max_concurrent_uploads,
-        per_client=settings.max_concurrent_uploads,
+        per_address=UPLOADS_PER_NETWORK,
+        per_network=UPLOADS_PER_NETWORK,
         retry_after_s=UPLOAD_RETRY_AFTER_S,
     )
     return Slots(limits=limits, name="uploads")
@@ -112,7 +117,8 @@ def upload_slots(settings: Settings) -> Slots:
 def timeline_slots(settings: Settings) -> Slots:
     limits = SlotLimits(
         total=settings.max_timeline_downloads,
-        per_client=settings.max_timeline_downloads,
+        per_address=TIMELINES_PER_ADDRESS,
+        per_network=TIMELINES_PER_NETWORK,
         retry_after_s=TIMELINE_RETRY_AFTER_S,
     )
     return Slots(limits=limits, name="timelines")

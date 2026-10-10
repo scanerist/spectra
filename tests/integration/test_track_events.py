@@ -30,8 +30,10 @@ def board() -> StatusBoard:
     return memory_board()
 
 
-def event_streams(*, total: int, per_client: int) -> EventStreams:
-    limits = SlotLimits(total=total, per_client=per_client, retry_after_s=5.0)
+def event_streams(*, total: int, per_address: int) -> EventStreams:
+    limits = SlotLimits(
+        total=total, per_address=per_address, per_network=per_address, retry_after_s=5.0
+    )
     return EventStreams(slots=Slots(limits=limits, name="event streams"), lifetime_s=LIFETIME_S)
 
 
@@ -55,7 +57,7 @@ def events_app(board: StatusBoard, streams: EventStreams) -> FastAPI:
 
 @pytest.fixture
 def client(board: StatusBoard) -> TestClient:
-    return TestClient(events_app(board, event_streams(total=4, per_client=2)))
+    return TestClient(events_app(board, event_streams(total=4, per_address=2)))
 
 
 def signalling_start(app: ASGIApp, started: asyncio.Event) -> ASGIApp:
@@ -126,7 +128,7 @@ def test_a_stream_ends_without_a_verdict_once_its_lifetime_is_over(
 @pytest.mark.anyio
 async def test_a_second_stream_from_the_same_address_is_rate_limited(board: StatusBoard) -> None:
     await board.record(TRACK, Analysing.at(AnalysisStage.TEMPO))
-    streams = event_streams(total=4, per_client=1)
+    streams = event_streams(total=4, per_address=1)
     first, second = await second_stream_while_one_is_open(board, streams)
     assert second.status_code == 429
     assert second.json()["error"] == "rate_limited"
@@ -138,7 +140,7 @@ async def test_a_second_stream_from_the_same_address_is_rate_limited(board: Stat
 @pytest.mark.anyio
 async def test_a_stream_beyond_the_server_limit_is_busy(board: StatusBoard) -> None:
     await board.record(TRACK, Analysing.at(AnalysisStage.TEMPO))
-    streams = event_streams(total=1, per_client=1)
+    streams = event_streams(total=1, per_address=1)
     _, second = await second_stream_while_one_is_open(board, streams)
     assert second.status_code == 503
     assert second.json()["error"] == "busy"

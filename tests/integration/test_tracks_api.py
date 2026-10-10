@@ -46,6 +46,9 @@ from tests.fakes import (
 
 DATA: Final = b"RIFF pretend this is audio"
 LIMIT_BYTES: Final = 1_000
+TESTCLIENT: Final = UploadSource(address="testclient", network="testclient")
+ELSEWHERE: Final = UploadSource(address="203.0.113.1", network="203.0.113.1")
+FARTHER: Final = UploadSource(address="203.0.113.2", network="203.0.113.2")
 
 
 class Api:
@@ -57,7 +60,8 @@ class Api:
         self.blobs = InMemoryBlobStore()
         self.clients = UnlimitedQuota()
         self.uploads = Slots(
-            limits=SlotLimits(total=1, per_client=1, retry_after_s=1.0), name="uploads"
+            limits=SlotLimits(total=2, per_address=1, per_network=1, retry_after_s=5.0),
+            name="uploads",
         )
         service = TrackService(
             decoder=decoder or FakeDecoder(),
@@ -78,7 +82,8 @@ class Api:
         install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
         install_upload_slots(app, self.uploads)
         self.timelines = Slots(
-            limits=SlotLimits(total=1, per_client=1, retry_after_s=1.0), name="timelines"
+            limits=SlotLimits(total=1, per_address=1, per_network=1, retry_after_s=5.0),
+            name="timelines",
         )
         install_timeline_slots(app, self.timelines)
         install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
@@ -99,7 +104,7 @@ def test_upload_answers_202_with_the_track_id(api: Api) -> None:
 
 def test_uploads_are_counted_per_client_address(api: Api) -> None:
     api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
-    assert api.clients.clients == [UploadSource(address="testclient", network="testclient")]
+    assert api.clients.clients == [TESTCLIENT]
 
 
 def test_an_exhausted_quota_is_rate_limited_with_retry_after() -> None:
@@ -120,15 +125,26 @@ def test_a_rate_limited_upload_is_refused_before_its_body_is_read() -> None:
 
 
 def test_an_upload_while_every_upload_slot_is_taken_is_busy_and_not_counted(api: Api) -> None:
-    held = api.uploads.take("someone else")
+    held = [api.uploads.take(source) for source in (ELSEWHERE, FARTHER)]
     response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
     assert response.status_code == 503
     assert response.json()["error"] == "busy"
     assert api.clients.clients == []
-    held.release()
+    held[0].release()
     assert (
         api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")}).status_code == 202
     )
+
+
+def test_a_second_upload_at_once_from_one_address_is_rate_limited_and_not_counted(
+    api: Api,
+) -> None:
+    api.uploads.take(TESTCLIENT)
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert response.status_code == 429
+    assert response.json()["error"] == "rate_limited"
+    assert response.headers["retry-after"] == "5"
+    assert api.clients.clients == []
 
 
 @pytest.mark.parametrize(
@@ -205,7 +221,7 @@ def test_upload_while_the_queue_is_full_is_busy(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("b.wav", DATA, "audio/wav")})
     assert response.status_code == 503
     assert response.json()["error"] == "busy"
-    assert api.clients.refunds == [UploadSource(address="testclient", network="testclient")]
+    assert api.clients.refunds == [TESTCLIENT]
 
 
 def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:
@@ -301,7 +317,7 @@ def test_a_timeline_while_every_timeline_slot_is_taken_is_busy(api: Api) -> None
     analysis = golden_analysis()
     asyncio.run(api.blobs.put(timeline_key(track), encode_timeline(analysis)))
     record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(analysis)))
-    held = api.timelines.take("someone else")
+    held = api.timelines.take(ELSEWHERE)
     response = api.client.get(f"/tracks/{track.value}/timeline")
     assert response.status_code == 503
     assert response.json()["error"] == "busy"

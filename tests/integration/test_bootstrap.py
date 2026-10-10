@@ -32,7 +32,8 @@ def test_settings_defaults() -> None:
     assert settings.total_uploads_per_hour == 600
     assert settings.max_event_streams == 64
     assert settings.max_timeline_downloads == 16
-    assert settings.max_event_streams_per_client == 4
+    assert settings.max_event_streams_per_address == 4
+    assert settings.max_event_streams_per_network == 8
     assert settings.event_stream_lifetime_s == 300.0
     assert settings.mode is Mode.LOCAL
 

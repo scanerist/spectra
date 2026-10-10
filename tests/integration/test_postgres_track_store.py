@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,8 @@ from tests.statuses import ANALYSING, EVERY_STATUS, FAILED, READY, track
 
 DATABASE_URL = os.environ.get("SPECTRA_TEST_DATABASE_URL")
 LONG_AGO = datetime(2020, 1, 1, tzinfo=UTC)
+REPLICA_COUNT = 4
+CONTESTED_TRACK_COUNT = 60
 
 pytestmark = [
     pytest.mark.anyio,
@@ -40,6 +43,15 @@ async def engine() -> AsyncIterator[AsyncEngine]:
 @pytest.fixture
 def store(engine: AsyncEngine) -> PostgresTrackStore:
     return PostgresTrackStore(engine=engine)
+
+
+@pytest.fixture
+async def replicas() -> AsyncIterator[list[PostgresTrackStore]]:
+    assert DATABASE_URL is not None
+    engines = [create_async_engine(DATABASE_URL) for _ in range(REPLICA_COUNT)]
+    yield [PostgresTrackStore(engine=replica) for replica in engines]
+    for replica in engines:
+        await replica.dispose()
 
 
 async def last_seen_at(engine: AsyncEngine, track_id: TrackId) -> datetime:
@@ -185,3 +197,46 @@ async def test_only_analyses_without_news_for_long_enough_are_abandoned(
     assert await store.find(track("running")) == ANALYSING
     assert await store.find(track("ready")) == READY
     assert await store.analysing_count() == 1
+
+
+async def sweep_until_done(store: PostgresTrackStore, *, unseen_for_s: float) -> list[TrackId]:
+    expired: list[TrackId] = []
+    while batch := await store.expire_unseen(unseen_for_s=unseen_for_s, limit=5):
+        expired.extend(batch)
+    return expired
+
+
+async def test_concurrent_sweeps_expire_every_track_exactly_once(
+    engine: AsyncEngine, store: PostgresTrackStore, replicas: list[PostgresTrackStore]
+) -> None:
+    names = [f"old-{index}" for index in range(CONTESTED_TRACK_COUNT)]
+    for name in names:
+        await store.save(track(name), READY)
+        await backdate(engine, track(name))
+    month_s = timedelta(days=30).total_seconds()
+    async with asyncio.TaskGroup() as group:
+        sweeps = [
+            group.create_task(sweep_until_done(replica, unseen_for_s=month_s))
+            for replica in replicas
+        ]
+    expired = [track_id for sweep in sweeps for track_id in sweep.result()]
+    assert sorted(expired, key=str) == sorted((track(name) for name in names), key=str)
+
+
+async def test_concurrent_abandons_hand_every_stalled_track_to_one_worker(
+    engine: AsyncEngine, store: PostgresTrackStore, replicas: list[PostgresTrackStore]
+) -> None:
+    abandoned = Failed(code=FailureCode.INTERNAL, message="abandoned")
+    names = [f"stalled-{index}" for index in range(CONTESTED_TRACK_COUNT)]
+    for name in names:
+        await store.save(track(name), ANALYSING)
+        await stall(engine, track(name), LONG_AGO)
+    hours_2_s = timedelta(hours=2).total_seconds()
+    async with asyncio.TaskGroup() as group:
+        abandons = [
+            group.create_task(replica.abandon_stalled(stalled_for_s=hours_2_s, status=abandoned))
+            for replica in replicas
+        ]
+    handed_out = [track_id for abandon in abandons for track_id in abandon.result()]
+    assert sorted(handed_out, key=str) == sorted((track(name) for name in names), key=str)
+    assert await store.analysing_count() == 0

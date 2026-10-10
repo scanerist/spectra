@@ -49,8 +49,8 @@ class UploadQuotaPolicy:
             QuotaScope(key=TOTAL_SCOPE_KEY, limit=self.total),
         )
 
-    def decide(self, *, oldest_in_full_scopes_s: Sequence[float], now_s: float) -> QuotaDecision:
-        if not oldest_in_full_scopes_s:
+    def decide(self, *, blocking_uploads_s: Sequence[float], now_s: float) -> QuotaDecision:
+        if not blocking_uploads_s:
             return QuotaDecision(allowed=True, retry_after_s=0.0)
-        free_at_s = max(oldest_in_full_scopes_s) + self.window_s
+        free_at_s = max(blocking_uploads_s) + self.window_s
         return QuotaDecision(allowed=False, retry_after_s=min(free_at_s - now_s, self.window_s))

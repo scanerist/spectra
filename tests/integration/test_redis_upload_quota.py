@@ -113,3 +113,22 @@ async def test_a_refused_upload_does_not_use_up_the_quota(client: Redis) -> None
     assert not any(decision.allowed for decision in refused)
     await asyncio.sleep(max(decision.retry_after_s for decision in refused) + 0.05)
     assert (await short.spend(FIRST)).allowed
+
+
+async def test_after_lowering_a_limit_the_wait_lasts_until_enough_uploads_leave(
+    client: Redis,
+) -> None:
+    prefix = f"spectra:test:{uuid.uuid4().hex}:"
+
+    def with_limit(uploads: int) -> RedisUploadQuota:
+        policy = UploadQuotaPolicy(per_address=uploads, per_network=100, total=1_000, window_s=2.0)
+        return RedisUploadQuota(client=client, policy=policy, prefix=prefix)
+
+    generous = with_limit(3)
+    await generous.spend(FIRST)
+    await asyncio.sleep(0.5)
+    await generous.spend(FIRST)
+    await generous.spend(FIRST)
+    refused = await with_limit(1).spend(FIRST)
+    assert not refused.allowed
+    assert refused.retry_after_s > 1.7

@@ -32,12 +32,12 @@ def test_a_source_counts_against_its_address_its_network_and_everyone() -> None:
 
 
 def test_an_upload_with_no_full_scope_is_allowed() -> None:
-    decision = POLICY.decide(oldest_in_full_scopes_s=[], now_s=10.0)
+    decision = POLICY.decide(blocking_uploads_s=[], now_s=10.0)
     assert decision == QuotaDecision(allowed=True, retry_after_s=0.0)
 
 
 def test_a_refused_upload_waits_until_the_oldest_upload_of_every_full_scope_leaves() -> None:
-    decision = POLICY.decide(oldest_in_full_scopes_s=[600.0, 900.0], now_s=1_000.0)
+    decision = POLICY.decide(blocking_uploads_s=[600.0, 900.0], now_s=1_000.0)
     assert decision == QuotaDecision(allowed=False, retry_after_s=3_500.0)
 
 
@@ -46,7 +46,7 @@ def test_a_refused_upload_waits_until_the_oldest_upload_of_every_full_scope_leav
     elapsed_s=st.floats(min_value=0.0, max_value=HOUR_S, exclude_max=True, allow_nan=False),
 )
 def test_the_wait_never_exceeds_one_window(oldest_s: float, elapsed_s: float) -> None:
-    decision = POLICY.decide(oldest_in_full_scopes_s=[oldest_s], now_s=oldest_s + elapsed_s)
+    decision = POLICY.decide(blocking_uploads_s=[oldest_s], now_s=oldest_s + elapsed_s)
     assert 0.0 < decision.retry_after_s <= HOUR_S
 
 

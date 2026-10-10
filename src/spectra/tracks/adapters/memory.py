@@ -111,8 +111,12 @@ class InMemoryUploadQuota:
         now_s = self._clock.now_s()
         scopes = self._policy.scopes(source)
         logs = [self._recent(scope.key, now_s) for scope in scopes]
-        full = [log[0] for scope, log in zip(scopes, logs, strict=True) if len(log) >= scope.limit]
-        decision = self._policy.decide(oldest_in_full_scopes_s=full, now_s=now_s)
+        full = [
+            log[len(log) - scope.limit]
+            for scope, log in zip(scopes, logs, strict=True)
+            if len(log) >= scope.limit
+        ]
+        decision = self._policy.decide(blocking_uploads_s=full, now_s=now_s)
         if decision.allowed:
             for log in logs:
                 log.append(now_s)

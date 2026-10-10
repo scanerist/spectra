@@ -4,9 +4,19 @@ from typing import Final
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
 from spectra.analysis.domain.track_analysis import TrackAnalysis
+from spectra.gateway.engine import EngineState
+from spectra.gateway.events import EventStreams
+from spectra.gateway.readiness import Readiness
+from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.upload_limit import UploadPace
-from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
+from spectra.tracks.adapters.memory import (
+    InMemoryBlobStore,
+    InMemoryProgressFeed,
+    InMemoryTrackStore,
+)
+from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.ports import AnalysisJob
+from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.quota import QuotaDecision, UploadSource
 from spectra.tracks.domain.track import Analysing, TrackId, TrackStatus
@@ -183,3 +193,32 @@ class RecordingObserver:
 
     def finished(self, track_id: TrackId, outcome: TrackStatus) -> None:
         self.events.append(("finished", track_id, outcome))
+
+
+def roomy_slots(name: str) -> Slots:
+    return Slots(
+        limits=SlotLimits(total=8, per_address=8, per_network=8, retry_after_s=5.0), name=name
+    )
+
+
+def fake_engine() -> EngineState:
+    service = TrackService(
+        decoder=FakeDecoder(),
+        board=memory_board(),
+        blobs=InMemoryBlobStore(),
+        jobs=FakeJobQueue(),
+        limits=UploadLimits(
+            max_upload_bytes=1_000,
+            max_duration_s=600.0,
+            max_pending=4,
+            max_decoded_samples=10**9,
+        ),
+    )
+    return EngineState(
+        track_service=service,
+        upload_admission=UploadAdmission(quota=UnlimitedQuota()),
+        event_streams=EventStreams(slots=roomy_slots("event streams"), lifetime_s=0.5),
+        upload_slots=roomy_slots("uploads"),
+        timeline_slots=roomy_slots("timelines"),
+        readiness=Readiness(),
+    )

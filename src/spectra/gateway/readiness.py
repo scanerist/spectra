@@ -3,12 +3,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Final
 
-from fastapi import FastAPI
-from fastapi.requests import HTTPConnection
-
 type Probe = Callable[[], Awaitable[bool]]
 
-READINESS_STATE: Final = "readiness"
 PROBE_TIMEOUT_S: Final = 2.0
 
 
@@ -30,12 +26,3 @@ class Readiness:
                 return await probe()
         except TimeoutError:
             return False
-
-
-def install_readiness(app: FastAPI, readiness: Readiness) -> None:
-    setattr(app.state, READINESS_STATE, readiness)
-
-
-def readiness(connection: HTTPConnection) -> Readiness:
-    installed = getattr(connection.app.state, READINESS_STATE, None)
-    return installed if isinstance(installed, Readiness) else Readiness()

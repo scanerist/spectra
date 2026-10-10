@@ -1,11 +1,14 @@
 import asyncio
+from dataclasses import replace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from spectra.gateway.engine import install_engine
 from spectra.gateway.errors import install_error_handlers
-from spectra.gateway.readiness import Readiness, install_readiness
+from spectra.gateway.readiness import Readiness
 from spectra.gateway.routes import create_router
+from tests.fakes import fake_engine
 
 
 async def answers() -> bool:
@@ -21,17 +24,16 @@ async def hanging() -> bool:
     return True
 
 
-def client_with(readiness: Readiness | None) -> TestClient:
+def client_with(readiness: Readiness) -> TestClient:
     app = FastAPI()
     app.include_router(create_router())
     install_error_handlers(app)
-    if readiness is not None:
-        install_readiness(app, readiness)
+    install_engine(app, replace(fake_engine(), readiness=readiness))
     return TestClient(app)
 
 
 def test_an_engine_without_stores_is_ready() -> None:
-    response = client_with(None).get("/ready")
+    response = client_with(Readiness()).get("/ready")
     assert (response.status_code, response.json()) == (200, {"ok": True})
 
 

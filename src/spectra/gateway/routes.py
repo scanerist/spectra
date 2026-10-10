@@ -1,20 +1,14 @@
 import ipaddress
-from collections.abc import Callable
 from typing import Annotated, Final, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
-from fastapi.requests import HTTPConnection
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile
 
-from spectra.gateway.errors import (
-    FAILURE_CODES,
-    ApiError,
-    ErrorCode,
-    GatewayNotConfiguredError,
-)
+from spectra.gateway.engine import EngineState, installed_engine
+from spectra.gateway.errors import FAILURE_CODES, ApiError, ErrorCode
 from spectra.gateway.events import (
     EVENT_STREAM_HEADERS,
     EVENT_STREAM_MEDIA_TYPE,
@@ -25,7 +19,7 @@ from spectra.gateway.events import (
 )
 from spectra.gateway.held_response import HeldStreamingResponse
 from spectra.gateway.protocol import PROTOCOL_VERSION
-from spectra.gateway.readiness import Readiness, readiness
+from spectra.gateway.readiness import Readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
 from spectra.gateway.slots import Slots
 from spectra.tracks.application.admission import UploadAdmission
@@ -38,11 +32,6 @@ from spectra.tracks.domain.errors import (
 from spectra.tracks.domain.quota import UploadSource
 from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackSummary
 
-TRACK_SERVICE_STATE: Final = "track_service"
-UPLOAD_ADMISSION_STATE: Final = "upload_admission"
-EVENT_STREAMS_STATE: Final = "event_streams"
-UPLOAD_SLOTS_STATE: Final = "upload_slots"
-TIMELINE_SLOTS_STATE: Final = "timeline_slots"
 TIMELINE_CACHE_CONTROL: Final = "private, max-age=3600"
 TIMELINE_SEND_DEADLINE_S: Final = 300.0
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
@@ -66,63 +55,39 @@ class ReadinessReport(BaseModel):
     ok: Literal[True] = True
 
 
-def install_track_service(app: FastAPI, service: TrackService) -> None:
-    setattr(app.state, TRACK_SERVICE_STATE, service)
+type Engine = Annotated[EngineState, Depends(installed_engine)]
 
 
-def track_service(connection: HTTPConnection) -> TrackService:
-    service = getattr(connection.app.state, TRACK_SERVICE_STATE, None)
-    if not isinstance(service, TrackService):
-        raise GatewayNotConfiguredError("the track service is not installed on the app")
-    return service
+def track_service(engine: Engine) -> TrackService:
+    return engine.track_service
 
 
-def install_upload_admission(app: FastAPI, admission: UploadAdmission) -> None:
-    setattr(app.state, UPLOAD_ADMISSION_STATE, admission)
+def upload_admission(engine: Engine) -> UploadAdmission:
+    return engine.upload_admission
 
 
-def upload_admission(connection: HTTPConnection) -> UploadAdmission:
-    admission = getattr(connection.app.state, UPLOAD_ADMISSION_STATE, None)
-    if not isinstance(admission, UploadAdmission):
-        raise GatewayNotConfiguredError("the upload admission is not installed on the app")
-    return admission
+def event_streams(engine: Engine) -> EventStreams:
+    return engine.event_streams
 
 
-def install_event_streams(app: FastAPI, streams: EventStreams) -> None:
-    setattr(app.state, EVENT_STREAMS_STATE, streams)
+def upload_slots(engine: Engine) -> Slots:
+    return engine.upload_slots
 
 
-def event_streams(connection: HTTPConnection) -> EventStreams:
-    streams = getattr(connection.app.state, EVENT_STREAMS_STATE, None)
-    if not isinstance(streams, EventStreams):
-        raise GatewayNotConfiguredError("the event streams are not installed on the app")
-    return streams
+def timeline_slots(engine: Engine) -> Slots:
+    return engine.timeline_slots
 
 
-def install_upload_slots(app: FastAPI, slots: Slots) -> None:
-    setattr(app.state, UPLOAD_SLOTS_STATE, slots)
-
-
-def install_timeline_slots(app: FastAPI, slots: Slots) -> None:
-    setattr(app.state, TIMELINE_SLOTS_STATE, slots)
-
-
-def installed_slots(state: str) -> Callable[[HTTPConnection], Slots]:
-    def slots(connection: HTTPConnection) -> Slots:
-        found = getattr(connection.app.state, state, None)
-        if not isinstance(found, Slots):
-            raise GatewayNotConfiguredError(f"the {state} are not installed on the app")
-        return found
-
-    return slots
+def readiness(engine: Engine) -> Readiness:
+    return engine.readiness
 
 
 type Service = Annotated[TrackService, Depends(track_service)]
 type Admission = Annotated[UploadAdmission, Depends(upload_admission)]
 type Probes = Annotated[Readiness, Depends(readiness)]
 type Streams = Annotated[EventStreams, Depends(event_streams)]
-type UploadSlots = Annotated[Slots, Depends(installed_slots(UPLOAD_SLOTS_STATE))]
-type TimelineSlots = Annotated[Slots, Depends(installed_slots(TIMELINE_SLOTS_STATE))]
+type UploadSlots = Annotated[Slots, Depends(upload_slots)]
+type TimelineSlots = Annotated[Slots, Depends(timeline_slots)]
 
 
 def peer_address(request: Request) -> PeerAddress:

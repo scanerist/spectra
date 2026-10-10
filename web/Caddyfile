@@ -5,7 +5,16 @@
 {$SPECTRA_DOMAIN} {
 	log
 
-	@engine path /tracks /tracks/* /health /ready
+	header {
+		defer
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Referrer-Policy no-referrer
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+	}
+
+	@engine path /tracks /tracks/* /health
 	handle @engine {
 		request_body {
 			max_size 257MiB
@@ -18,14 +27,7 @@
 	handle {
 		root * /srv
 		encode zstd gzip
-		header {
-			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-			Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-			Referrer-Policy no-referrer
-			Strict-Transport-Security "max-age=31536000"
-			X-Content-Type-Options nosniff
-			X-Frame-Options DENY
-		}
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
 		@page path / /index.html

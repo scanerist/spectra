@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 const ENGINE_URL = process.env.SPECTRA_ENGINE_URL ?? "http://127.0.0.1:8000";
-const ENGINE_PATHS = ["/tracks", "/health", "/ready"];
+const ENGINE_PATHS = ["/tracks", "/health"];
 
 export default defineConfig({
   server: {

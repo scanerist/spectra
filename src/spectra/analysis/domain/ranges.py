@@ -8,11 +8,6 @@ from spectra.analysis.domain.errors import InvalidShapeError, InvalidTimeError, 
 type Float32Array = NDArray[np.float32]
 
 
-def require_finite(name: str, value: float) -> None:
-    if not math.isfinite(value):
-        raise OutOfRangeError(f"{name} must be finite, got {value}")
-
-
 def require_time(time_s: float) -> None:
     if not (math.isfinite(time_s) and time_s >= 0.0):
         raise InvalidTimeError(f"time must be finite and >= 0, got {time_s}")

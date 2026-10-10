@@ -1,9 +1,7 @@
-import math
 from dataclasses import dataclass
 from typing import Final
 
 from spectra.analysis.domain.errors import InvalidBeatPositionError, InvalidTempoError
-from spectra.analysis.domain.ranges import require_time
 
 BEATS_PER_BAR: Final = 4
 MIN_BPM: Final = 20.0
@@ -39,13 +37,3 @@ class Tempo:
     @property
     def beat_duration_s(self) -> float:
         return SECONDS_PER_MINUTE / self.bpm
-
-    def beats_at(self, time_s: float) -> float:
-        require_time(time_s)
-        return time_s / self.beat_duration_s
-
-    def position_at(self, time_s: float) -> BeatPosition:
-        beats = self.beats_at(time_s)
-        beat_index = math.floor(beats)
-        bar, beat_in_bar = divmod(beat_index, BEATS_PER_BAR)
-        return BeatPosition(bar=bar, beat_in_bar=beat_in_bar, phase=beats - beat_index)

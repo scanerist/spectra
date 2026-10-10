@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from typing import Final
 
 import httpx
@@ -8,16 +9,17 @@ from fastapi.testclient import TestClient
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from spectra.analysis.domain.track_analysis import AnalysisStage
+from spectra.gateway.engine import install_engine
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.events import EventStreams, status_event
-from spectra.gateway.routes import create_router, install_event_streams, install_track_service
+from spectra.gateway.routes import create_router
 from spectra.gateway.slots import SlotLimits, Slots
 from spectra.tracks.adapters.memory import InMemoryBlobStore
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, Ready, TrackId, TrackSummary
 from tests.contract.timeline_fixture import golden_analysis
-from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, record_now
+from tests.fakes import FakeDecoder, FakeJobQueue, fake_engine, memory_board, record_now
 from tests.sse import parse_events
 
 TRACK = TrackId.of_content(b"track")
@@ -50,8 +52,7 @@ def events_app(board: StatusBoard, streams: EventStreams) -> FastAPI:
     app = FastAPI()
     app.include_router(create_router())
     install_error_handlers(app)
-    install_track_service(app, service)
-    install_event_streams(app, streams)
+    install_engine(app, replace(fake_engine(), track_service=service, event_streams=streams))
     return app
 
 

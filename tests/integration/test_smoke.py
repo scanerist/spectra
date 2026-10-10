@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -9,6 +10,7 @@ import uvicorn
 from spectra.bootstrap import smoke
 from spectra.bootstrap.app import create_app
 from spectra.bootstrap.settings import Settings
+from tests.contract.timeline_fixture import GOLDEN_BARS, GOLDEN_FRAMES
 
 STARTUP_LIMIT_S = 10.0
 
@@ -60,3 +62,22 @@ def test_main_exits_with_the_error_when_nothing_answers(monkeypatch: pytest.Monk
 def test_non_http_base_url_is_rejected() -> None:
     with pytest.raises(smoke.SmokeTestError):
         smoke.Client("ftp://example.org")
+
+
+def golden_timeline() -> bytes:
+    return (Path(__file__).parents[1] / "contract" / "golden" / "timeline_v1.bin").read_bytes()
+
+
+def test_timeline_counts_read_the_golden_timeline() -> None:
+    counts = smoke.timeline_counts(golden_timeline())
+    assert counts == {"frame_count": GOLDEN_FRAMES, "bar_count": GOLDEN_BARS}
+
+
+@pytest.mark.parametrize(
+    "timeline",
+    [golden_timeline()[:-1], b"\x02\x00\x00\x00" + golden_timeline()[4:]],
+    ids=["truncated", "other-protocol"],
+)
+def test_timeline_counts_reject_a_malformed_timeline(timeline: bytes) -> None:
+    with pytest.raises(smoke.SmokeTestError):
+        smoke.timeline_counts(timeline)

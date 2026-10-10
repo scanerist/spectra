@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 
 from spectra.analysis.domain.ranges import Float32Array
 from spectra.analysis.domain.signal import ANALYSIS_SAMPLE_RATE_HZ, AudioSignal
+from spectra.analysis.domain.stft import stft_chunks
 
 SAMPLE_RATE_HZ: Final = ANALYSIS_SAMPLE_RATE_HZ
 KICK_LENGTH_S: Final = 0.25
@@ -74,3 +75,7 @@ def impulse_at(time_s: float, duration_s: float) -> Float32Array:
 
 def signal_of(*parts: Float32Array) -> AudioSignal:
     return AudioSignal(samples=np.concatenate(parts))
+
+
+def whole_stft(signal: AudioSignal) -> Float32Array:
+    return np.concatenate(list(stft_chunks(signal)))

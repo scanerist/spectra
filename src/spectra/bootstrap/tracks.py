@@ -6,7 +6,9 @@ from prometheus_client import CollectorRegistry
 from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.hosted import HostedAdapters
 from spectra.bootstrap.settings import Settings
+from spectra.gateway.engine import EngineState
 from spectra.gateway.events import EventStreams
+from spectra.gateway.readiness import Readiness
 from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import UploadPace
@@ -20,6 +22,7 @@ from spectra.tracks.adapters.memory import (
 )
 from spectra.tracks.adapters.prometheus import PrometheusAnalysisObserver
 from spectra.tracks.adapters.redis_quota import RedisUploadQuota
+from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.pipeline import AnalysisPipeline
 from spectra.tracks.application.ports import AnalysisObserver, BlobStore, JobQueue, UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
@@ -125,6 +128,27 @@ def timeline_slots(settings: Settings) -> Slots:
         retry_after_s=TIMELINE_RETRY_AFTER_S,
     )
     return Slots(limits=limits, name="timelines")
+
+
+def engine_state(parts: TrackParts, settings: Settings, readiness: Readiness) -> EngineState:
+    return EngineState(
+        track_service=track_service(parts, settings),
+        upload_admission=UploadAdmission(quota=parts.quota),
+        event_streams=event_streams(settings),
+        upload_slots=upload_slots(settings),
+        timeline_slots=timeline_slots(settings),
+        readiness=readiness,
+    )
+
+
+def hosted_readiness(adapters: HostedAdapters) -> Readiness:
+    return Readiness(
+        probes={
+            "postgres": adapters.store.ping,
+            "redis": adapters.jobs.ping,
+            "s3": adapters.blobs.ping,
+        }
+    )
 
 
 def upload_pace(settings: Settings) -> UploadPace:

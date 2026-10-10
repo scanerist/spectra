@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from spectra.analysis.domain.errors import InvalidPeaksError, InvalidShapeError, OutOfRangeError
+from spectra.analysis.domain.errors import InvalidPeaksError, OutOfRangeError
 from spectra.analysis.domain.peaks import PEAK_COUNT, PEAK_FIELD_COUNT, Peak, Peaks
 
 
@@ -62,39 +62,6 @@ def test_padded_array_is_zero_filled_float32_rows() -> None:
     np.testing.assert_array_equal(padded[1:], 0.0)
 
 
-def test_from_padded_array_drops_padding_rows() -> None:
-    padded = np.zeros((PEAK_COUNT, PEAK_FIELD_COUNT), dtype=np.float32)
-    padded[0] = (55.0, 0.75)
-    padded[1] = (440.0, 0.5)
-    peaks = Peaks.from_padded_array(padded)
-    assert peaks.items == (
-        Peak(freq_hz=55.0, amplitude=0.75),
-        Peak(freq_hz=440.0, amplitude=0.5),
-    )
-
-
-def test_from_padded_array_rejects_wrong_shape() -> None:
-    with pytest.raises(InvalidShapeError):
-        Peaks.from_padded_array(np.zeros((PEAK_COUNT, 3), dtype=np.float32))
-
-
-@pytest.mark.parametrize(
-    "rows",
-    [
-        [(0.0, 0.0), (440.0, 0.5)],
-        [(55.0, 0.75), (0.0, 0.5)],
-    ],
-    ids=["gap-before-peak", "padding-with-amplitude"],
-)
-def test_from_padded_array_rejects_malformed_padding(
-    rows: list[tuple[float, float]],
-) -> None:
-    padded = np.zeros((PEAK_COUNT, PEAK_FIELD_COUNT), dtype=np.float32)
-    padded[: len(rows)] = rows
-    with pytest.raises(InvalidPeaksError):
-        Peaks.from_padded_array(padded)
-
-
 PEAK_STRATEGY: Final = st.builds(
     Peak,
     freq_hz=st.floats(min_value=1.0, max_value=24_000.0),
@@ -103,8 +70,11 @@ PEAK_STRATEGY: Final = st.builds(
 
 
 @given(candidates=st.lists(PEAK_STRATEGY, max_size=PEAK_COUNT))
-def test_padded_array_round_trip(candidates: list[Peak]) -> None:
+def test_padded_array_lists_every_peak_by_amplitude_before_zero_rows(
+    candidates: list[Peak],
+) -> None:
     padded = Peaks.ranked(candidates).as_padded_array()
-    restored = Peaks.from_padded_array(padded)
-    assert len(restored.items) == len(candidates)
-    np.testing.assert_array_equal(restored.as_padded_array(), padded)
+    count = len(candidates)
+    assert np.all(padded[:count, 0] > 0.0)
+    assert np.all(np.diff(padded[:count, 1]) <= 0.0)
+    np.testing.assert_array_equal(padded[count:], 0.0)

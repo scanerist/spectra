@@ -7,11 +7,7 @@ from typing import Final, Self
 import numpy as np
 
 from spectra.analysis.domain.errors import InvalidPeaksError, OutOfRangeError
-from spectra.analysis.domain.ranges import (
-    Float32Array,
-    read_only_float32,
-    require_unit_interval,
-)
+from spectra.analysis.domain.ranges import Float32Array, require_unit_interval
 
 PEAK_COUNT: Final = 8
 PEAK_FIELD_COUNT: Final = 2
@@ -42,19 +38,6 @@ class Peaks:
     def ranked(cls, candidates: Iterable[Peak]) -> Self:
         strongest = sorted(candidates, key=lambda candidate: candidate.amplitude, reverse=True)
         return cls(items=tuple(strongest[:PEAK_COUNT]))
-
-    @classmethod
-    def from_padded_array(cls, padded: Float32Array) -> Self:
-        rows = read_only_float32(padded, name="padded peaks", shape=(PEAK_COUNT, PEAK_FIELD_COUNT))
-        count = int(np.count_nonzero(rows[:, 0]))
-        if np.any(rows[:count, 0] == 0.0) or np.any(rows[count:] != 0.0):
-            raise InvalidPeaksError("padding rows must be all zero and follow every peak")
-        return cls(
-            items=tuple(
-                Peak(freq_hz=freq_hz, amplitude=amplitude)
-                for freq_hz, amplitude in rows[:count].tolist()
-            )
-        )
 
     def as_padded_array(self) -> Float32Array:
         padded = np.zeros((PEAK_COUNT, PEAK_FIELD_COUNT), dtype=np.float32)

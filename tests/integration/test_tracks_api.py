@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Final
 
 import pytest
@@ -8,14 +9,9 @@ from fastapi.testclient import TestClient
 
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
+from spectra.gateway.engine import install_engine
 from spectra.gateway.errors import install_error_handlers
-from spectra.gateway.routes import (
-    create_router,
-    install_timeline_slots,
-    install_track_service,
-    install_upload_admission,
-    install_upload_slots,
-)
+from spectra.gateway.routes import create_router
 from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
@@ -41,6 +37,7 @@ from tests.fakes import (
     FakeDecoder,
     FakeJobQueue,
     UnlimitedQuota,
+    fake_engine,
     memory_board,
     probe_of,
     record_now,
@@ -80,14 +77,20 @@ class Api:
         app = FastAPI()
         app.include_router(create_router())
         install_error_handlers(app)
-        install_track_service(app, service)
-        install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
-        install_upload_slots(app, self.uploads)
         self.timelines = Slots(
             limits=SlotLimits(total=1, per_address=1, per_network=1, retry_after_s=5.0),
             name="timelines",
         )
-        install_timeline_slots(app, self.timelines)
+        install_engine(
+            app,
+            replace(
+                fake_engine(),
+                track_service=service,
+                upload_admission=UploadAdmission(quota=quota or self.clients),
+                upload_slots=self.uploads,
+                timeline_slots=self.timelines,
+            ),
+        )
         install_upload_limit(
             app, max_upload_bytes=LIMIT_BYTES, pace=RELAXED_PACE, clock=FakeClock()
         )

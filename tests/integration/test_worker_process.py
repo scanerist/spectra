@@ -62,16 +62,20 @@ async def test_a_worker_analyses_what_the_api_accepted(hosted: HostedSettings) -
     async with asyncio.TaskGroup() as group:
         group.create_task(serve(Settings(), hosted, stop=stop))
         with TestClient(create_app(Settings(), hosted)) as client:
-            created = client.post("/tracks", files={"file": ("kicks.flac", data, "audio/flac")})
+            created = await asyncio.to_thread(
+                client.post, "/tracks", files={"file": ("kicks.flac", data, "audio/flac")}
+            )
+            assert created.status_code == 202, created.text
             track_id = created.json()["track_id"]
 
             async def is_ready() -> bool:
-                status_code: int = client.get(f"/tracks/{track_id}").status_code
+                response = await asyncio.to_thread(client.get, f"/tracks/{track_id}")
+                status_code: int = response.status_code
                 return status_code == 200
 
             await eventually(is_ready)
-            info = client.get(f"/tracks/{track_id}").json()
-            timeline = client.get(f"/tracks/{track_id}/timeline")
+            info = (await asyncio.to_thread(client.get, f"/tracks/{track_id}")).json()
+            timeline = await asyncio.to_thread(client.get, f"/tracks/{track_id}/timeline")
         stop.set()
     assert info["bpm"] == pytest.approx(128.0, abs=0.5)
     assert timeline.status_code == 200

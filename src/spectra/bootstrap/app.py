@@ -12,17 +12,24 @@ from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
     analysis_observer,
     analysis_worker,
+    event_streams,
     hosted_parts,
     local_parts,
+    timeline_slots,
     track_service,
+    upload_pace,
+    upload_slots,
 )
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.readiness import Readiness, install_readiness
 from spectra.gateway.request_metrics import install_request_metrics
 from spectra.gateway.routes import (
     create_router,
+    install_event_streams,
+    install_timeline_slots,
     install_track_service,
     install_upload_admission,
+    install_upload_slots,
 )
 from spectra.gateway.security_headers import install_security_headers
 from spectra.gateway.upload_limit import install_upload_limit
@@ -47,16 +54,24 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
             parts = local_parts(settings)
             install_track_service(app, track_service(parts, settings))
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
+            install_event_streams(app, event_streams(settings))
+            install_upload_slots(app, upload_slots(settings))
+            install_timeline_slots(app, timeline_slots(settings))
             worker = analysis_worker(parts, observer)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
                 yield
                 await worker.close()
         else:
-            async with open_hosted(hosted, consumer=consumer_name()) as adapters:
+            async with open_hosted(
+                hosted, consumer=consumer_name(), max_subscriptions=settings.max_event_streams
+            ) as adapters:
                 hosted_tracks = hosted_parts(adapters, settings)
                 install_track_service(app, track_service(hosted_tracks, settings))
                 install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))
+                install_event_streams(app, event_streams(settings))
+                install_upload_slots(app, upload_slots(settings))
+                install_timeline_slots(app, timeline_slots(settings))
                 install_readiness(
                     app,
                     Readiness(
@@ -69,10 +84,21 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 )
                 yield
 
-    app = FastAPI(title="spectra engine", lifespan=lifespan)
+    app = FastAPI(
+        title="spectra engine",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.include_router(create_router())
     install_error_handlers(app)
-    install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)
+    install_upload_limit(
+        app,
+        max_upload_bytes=settings.max_upload_bytes,
+        pace=upload_pace(settings),
+        clock=MonotonicClock(),
+    )
     install_security_headers(app)
     install_request_metrics(app, registry=registry, clock=MonotonicClock())
     return app

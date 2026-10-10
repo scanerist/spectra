@@ -1,13 +1,15 @@
 import asyncio
+from typing import Final
 
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
 from spectra.analysis.domain.track_analysis import TrackAnalysis
+from spectra.gateway.upload_limit import UploadPace
 from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
-from spectra.tracks.domain.quota import QuotaDecision
-from spectra.tracks.domain.track import TrackId, TrackStatus
+from spectra.tracks.domain.quota import QuotaDecision, UploadSource
+from spectra.tracks.domain.track import Analysing, TrackId, TrackStatus
 
 
 class FakeClock:
@@ -30,6 +32,21 @@ class FakeClock:
         await asyncio.sleep(0)
 
 
+def probe_of(
+    *, duration_s: float = 180.0, sample_rate_hz: int = 44_100, channel_count: int = 2
+) -> AudioProbe:
+    return AudioProbe(
+        audio_format=AudioFormat.WAV,
+        duration_s=duration_s,
+        sample_rate_hz=sample_rate_hz,
+        channel_count=channel_count,
+    )
+
+
+DEFAULT_PROBE: Final = probe_of()
+RELAXED_PACE: Final = UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=60.0, max_s=3_600.0)
+
+
 class FakeDecoder:
     def __init__(
         self,
@@ -37,19 +54,20 @@ class FakeDecoder:
         signal: AudioSignal | None = None,
         probe_error: Exception | None = None,
         decode_error: Exception | None = None,
-        duration_s: float = 180.0,
+        probe_result: AudioProbe = DEFAULT_PROBE,
     ) -> None:
         self._signal = signal
-        self._duration_s = duration_s
+        self._probe_result = probe_result
         self._probe_error = probe_error
         self._decode_error = decode_error
+        self.probed: list[bytes] = []
         self.decoded: list[bytes] = []
 
     def probe(self, data: bytes) -> AudioProbe:
+        self.probed.append(data)
         if self._probe_error is not None:
             raise self._probe_error
-        audio_format = AudioFormat.WAV if data else AudioFormat.MP3
-        return AudioProbe(audio_format=audio_format, duration_s=self._duration_s)
+        return self._probe_result
 
     def decode(self, data: bytes) -> AudioSignal:
         self.decoded.append(data)
@@ -82,10 +100,27 @@ class FakeJobQueue:
 
 
 class FakeTrackExpiry:
-    def __init__(self, store: InMemoryTrackStore, *, unseen_s: dict[TrackId, float]) -> None:
+    def __init__(
+        self,
+        store: InMemoryTrackStore,
+        *,
+        unseen_s: dict[TrackId, float],
+        stalled_s: dict[TrackId, float] | None = None,
+    ) -> None:
         self._store = store
         self._unseen_s = unseen_s
+        self._stalled_s = stalled_s or {}
         self.limits: list[int] = []
+
+    async def abandon_stalled(self, *, stalled_for_s: float, status: TrackStatus) -> list[TrackId]:
+        stalled = [
+            track_id
+            for track_id, quiet_s in self._stalled_s.items()
+            if quiet_s > stalled_for_s and isinstance(await self._store.find(track_id), Analysing)
+        ]
+        for track_id in stalled:
+            await self._store.save(track_id, status)
+        return stalled
 
     async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
         self.limits.append(limit)
@@ -114,14 +149,14 @@ def fake_timeline(analysis: TrackAnalysis) -> bytes:
 
 class UnlimitedQuota:
     def __init__(self) -> None:
-        self.clients: list[str] = []
-        self.refunds: list[str] = []
+        self.clients: list[UploadSource] = []
+        self.refunds: list[UploadSource] = []
 
-    async def refund(self, client: str) -> None:
-        self.refunds.append(client)
+    async def refund(self, source: UploadSource) -> None:
+        self.refunds.append(source)
 
-    async def spend(self, client: str) -> QuotaDecision:
-        self.clients.append(client)
+    async def spend(self, source: UploadSource) -> QuotaDecision:
+        self.clients.append(source)
         return QuotaDecision(allowed=True, retry_after_s=0.0)
 
 
@@ -129,13 +164,13 @@ class ExhaustedQuota:
     def __init__(self, *, retry_after_s: float) -> None:
         self._retry_after_s = retry_after_s
 
-        self.clients: list[str] = []
+        self.clients: list[UploadSource] = []
 
-    async def spend(self, client: str) -> QuotaDecision:
-        self.clients.append(client)
+    async def spend(self, source: UploadSource) -> QuotaDecision:
+        self.clients.append(source)
         return QuotaDecision(allowed=False, retry_after_s=self._retry_after_s)
 
-    async def refund(self, client: str) -> None:
+    async def refund(self, source: UploadSource) -> None:
         pass
 
 

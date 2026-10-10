@@ -6,6 +6,7 @@ from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import create_router
 from spectra.gateway.security_headers import install_security_headers
 from spectra.gateway.upload_limit import install_upload_limit
+from tests.fakes import RELAXED_PACE, FakeClock
 
 CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'"
 
@@ -15,7 +16,7 @@ def app() -> FastAPI:
     app = FastAPI()
     app.include_router(create_router())
     install_error_handlers(app)
-    install_upload_limit(app, max_upload_bytes=10)
+    install_upload_limit(app, max_upload_bytes=10, pace=RELAXED_PACE, clock=FakeClock())
     install_security_headers(app)
     return app
 

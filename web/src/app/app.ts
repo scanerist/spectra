@@ -9,6 +9,7 @@ import { createDissolve } from "./dissolve";
 import { element } from "./dom";
 import { clockText } from "./format";
 import { messageFor } from "./messages";
+import { repositoryLink } from "./repository";
 import { ROUTES, type Route, startRouter } from "./router";
 import { type LoadedTrack, loadTrack } from "./session";
 
@@ -43,7 +44,7 @@ export function startApp(root: Document): void {
   const playIcon = element(root, "#icon-play", SVGSVGElement);
   const repo = element(root, "#repo", HTMLAnchorElement);
   const unmute = element(root, "#unmute", HTMLButtonElement);
-  const repositoryUrl = import.meta.env.VITE_REPOSITORY_URL ?? "";
+  const repositoryUrl = repositoryLink(import.meta.env.VITE_REPOSITORY_URL ?? "");
   repo.href = repositoryUrl;
 
   const start = mountStart(root, (file) => void open(file), ensurePlayer);

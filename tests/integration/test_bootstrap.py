@@ -25,7 +25,18 @@ def test_settings_defaults() -> None:
     assert settings.max_upload_bytes == 256 * 1024 * 1024
     assert settings.max_tracks == 8
     assert settings.max_duration_s == 1_800.0
+    assert settings.max_decoded_samples == 1_800 * 96_000 * 2
     assert settings.max_pending_analyses == 4
+    assert settings.max_concurrent_uploads == 2
+    assert settings.min_upload_bytes_per_s == 64 * 1024
+    assert settings.max_upload_s == 600.0
+    assert (settings.uploads_per_hour, settings.network_uploads_per_hour) == (20, 60)
+    assert settings.total_uploads_per_hour == 600
+    assert settings.max_event_streams == 64
+    assert settings.max_timeline_downloads == 16
+    assert settings.max_event_streams_per_address == 4
+    assert settings.max_event_streams_per_network == 8
+    assert settings.event_stream_lifetime_s == 300.0
     assert settings.mode is Mode.LOCAL
 
 
@@ -155,6 +166,14 @@ def test_hosted_mode_refuses_to_start_without_connections(
 def test_created_app_serves_health() -> None:
     client = TestClient(bootstrap_app.create_app(Settings()))
     assert client.get("/health").json() == {"ok": True, "protocol": 1}
+
+
+@pytest.mark.parametrize(
+    "path", ["/docs", "/redoc", "/openapi.json"], ids=["docs", "redoc", "schema"]
+)
+def test_created_app_does_not_publish_its_schema(path: str) -> None:
+    client = TestClient(bootstrap_app.create_app(Settings()))
+    assert client.get(path).status_code == 404
 
 
 def test_run_serves_the_app_with_configured_host_and_port(

@@ -16,6 +16,8 @@ class AudioFormat(StrEnum):
 class AudioProbe:
     audio_format: AudioFormat
     duration_s: float
+    sample_rate_hz: int
+    channel_count: int
 
 
 class AudioDecoder(Protocol):

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from spectra.analysis.domain.track_analysis import TrackAnalysis
-from spectra.tracks.domain.quota import QuotaDecision
+from spectra.tracks.domain.quota import QuotaDecision, UploadSource
 from spectra.tracks.domain.track import TrackId, TrackStatus
 
 type TimelineEncoder = Callable[[TrackAnalysis], bytes]
@@ -53,13 +53,17 @@ class AnalysisObserver(Protocol):
 
 
 class UploadQuota(Protocol):
-    async def spend(self, client: str) -> QuotaDecision: ...
+    async def spend(self, source: UploadSource) -> QuotaDecision: ...
 
-    async def refund(self, client: str) -> None: ...
+    async def refund(self, source: UploadSource) -> None: ...
 
 
 class TrackExpiry(Protocol):
     async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]: ...
+
+    async def abandon_stalled(
+        self, *, stalled_for_s: float, status: TrackStatus
+    ) -> list[TrackId]: ...
 
 
 class ProgressFeed(Protocol):

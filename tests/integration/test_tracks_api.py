@@ -9,7 +9,14 @@ from fastapi.testclient import TestClient
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
-from spectra.gateway.routes import create_router, install_track_service, install_upload_admission
+from spectra.gateway.routes import (
+    create_router,
+    install_timeline_slots,
+    install_track_service,
+    install_upload_admission,
+    install_upload_slots,
+)
+from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.adapters.memory import InMemoryBlobStore
@@ -17,6 +24,7 @@ from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.ports import UploadQuota
 from spectra.tracks.application.service import TrackService, UploadLimits
 from spectra.tracks.domain.blobs import timeline_key
+from spectra.tracks.domain.quota import UploadSource
 from spectra.tracks.domain.track import (
     Analysing,
     Failed,
@@ -27,16 +35,22 @@ from spectra.tracks.domain.track import (
 )
 from tests.contract.timeline_fixture import golden_analysis
 from tests.fakes import (
+    RELAXED_PACE,
     ExhaustedQuota,
+    FakeClock,
     FakeDecoder,
     FakeJobQueue,
     UnlimitedQuota,
     memory_board,
+    probe_of,
     record_now,
 )
 
 DATA: Final = b"RIFF pretend this is audio"
 LIMIT_BYTES: Final = 1_000
+TESTCLIENT: Final = UploadSource(address="testclient", network="testclient")
+ELSEWHERE: Final = UploadSource(address="203.0.113.1", network="203.0.113.1")
+FARTHER: Final = UploadSource(address="203.0.113.2", network="203.0.113.2")
 
 
 class Api:
@@ -47,19 +61,36 @@ class Api:
         self.jobs = FakeJobQueue()
         self.blobs = InMemoryBlobStore()
         self.clients = UnlimitedQuota()
+        self.uploads = Slots(
+            limits=SlotLimits(total=2, per_address=1, per_network=1, retry_after_s=5.0),
+            name="uploads",
+        )
         service = TrackService(
             decoder=decoder or FakeDecoder(),
             board=self.board,
             blobs=self.blobs,
             jobs=self.jobs,
-            limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
+            limits=UploadLimits(
+                max_upload_bytes=LIMIT_BYTES,
+                max_duration_s=600.0,
+                max_pending=1,
+                max_decoded_samples=10**9,
+            ),
         )
         app = FastAPI()
         app.include_router(create_router())
         install_error_handlers(app)
         install_track_service(app, service)
         install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
-        install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
+        install_upload_slots(app, self.uploads)
+        self.timelines = Slots(
+            limits=SlotLimits(total=1, per_address=1, per_network=1, retry_after_s=5.0),
+            name="timelines",
+        )
+        install_timeline_slots(app, self.timelines)
+        install_upload_limit(
+            app, max_upload_bytes=LIMIT_BYTES, pace=RELAXED_PACE, clock=FakeClock()
+        )
         self.client = TestClient(app, raise_server_exceptions=False)
 
 
@@ -77,7 +108,7 @@ def test_upload_answers_202_with_the_track_id(api: Api) -> None:
 
 def test_uploads_are_counted_per_client_address(api: Api) -> None:
     api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
-    assert api.clients.clients == ["testclient"]
+    assert api.clients.clients == [TESTCLIENT]
 
 
 def test_an_exhausted_quota_is_rate_limited_with_retry_after() -> None:
@@ -95,6 +126,40 @@ def test_a_rate_limited_upload_is_refused_before_its_body_is_read() -> None:
     headers = {"content-type": "multipart/form-data; boundary=b"}
     response = api.client.post("/tracks", content=body, headers=headers)
     assert response.status_code == 429
+
+
+def test_an_upload_while_every_upload_slot_is_taken_is_busy_and_not_counted(api: Api) -> None:
+    held = [api.uploads.take(source) for source in (ELSEWHERE, FARTHER)]
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert response.status_code == 503
+    assert response.json()["error"] == "busy"
+    assert api.clients.clients == []
+    held[0].release()
+    assert (
+        api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")}).status_code == 202
+    )
+
+
+def test_a_second_upload_at_once_from_one_address_is_rate_limited_and_not_counted(
+    api: Api,
+) -> None:
+    api.uploads.take(TESTCLIENT)
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert response.status_code == 429
+    assert response.json()["error"] == "rate_limited"
+    assert response.headers["retry-after"] == "5"
+    assert api.clients.clients == []
+
+
+@pytest.mark.parametrize(
+    ("data", "status_code"),
+    [(DATA, 202), (b"", 400), (b"x" * (LIMIT_BYTES + 1), 413)],
+    ids=["accepted", "empty", "too-large"],
+)
+def test_an_upload_gives_its_slot_back(api: Api, data: bytes, status_code: int) -> None:
+    response = api.client.post("/tracks", files={"file": ("t.wav", data, "audio/wav")})
+    assert response.status_code == status_code
+    assert api.uploads.held == 0
 
 
 def test_upload_without_a_file_part_is_no_file(api: Api) -> None:
@@ -160,7 +225,7 @@ def test_upload_while_the_queue_is_full_is_busy(api: Api) -> None:
     response = api.client.post("/tracks", files={"file": ("b.wav", DATA, "audio/wav")})
     assert response.status_code == 503
     assert response.json()["error"] == "busy"
-    assert api.clients.refunds == ["testclient"]
+    assert api.clients.refunds == [TESTCLIENT]
 
 
 def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:
@@ -169,7 +234,7 @@ def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:
 
 
 def test_track_over_the_duration_limit_is_file_too_large() -> None:
-    api = Api(decoder=FakeDecoder(duration_s=601.0))
+    api = Api(decoder=FakeDecoder(probe_result=probe_of(duration_s=601.0)))
     response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
@@ -246,7 +311,29 @@ def test_ready_track_timeline_is_the_encoded_analysis(api: Api) -> None:
     response = api.client.get(f"/tracks/{track.value}/timeline")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["cache-control"] == "private, max-age=3600"
     assert response.content == encode_timeline(analysis)
+    assert api.timelines.held == 0
+
+
+def test_a_timeline_while_every_timeline_slot_is_taken_is_busy(api: Api) -> None:
+    track = TrackId.of_content(DATA)
+    analysis = golden_analysis()
+    asyncio.run(api.blobs.put(timeline_key(track), encode_timeline(analysis)))
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(analysis)))
+    held = api.timelines.take(ELSEWHERE)
+    response = api.client.get(f"/tracks/{track.value}/timeline")
+    assert response.status_code == 503
+    assert response.json()["error"] == "busy"
+    held.release()
+    assert api.client.get(f"/tracks/{track.value}/timeline").status_code == 200
+
+
+def test_a_missing_timeline_gives_its_slot_back(api: Api) -> None:
+    track = TrackId.of_content(DATA)
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(golden_analysis())))
+    assert api.client.get(f"/tracks/{track.value}/timeline").status_code == 404
+    assert api.timelines.held == 0
 
 
 def test_ready_track_without_a_timeline_is_forgotten(api: Api) -> None:

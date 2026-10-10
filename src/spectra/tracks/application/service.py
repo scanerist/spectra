@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Final
 
@@ -25,6 +25,7 @@ class UploadLimits:
     max_upload_bytes: int
     max_duration_s: float
     max_pending: int
+    max_decoded_samples: int
 
 
 class TrackService:
@@ -42,6 +43,7 @@ class TrackService:
         self._blobs = blobs
         self._jobs = jobs
         self._limits = limits
+        self._reserving = asyncio.Lock()
 
     @property
     def max_upload_bytes(self) -> int:
@@ -55,20 +57,27 @@ class TrackService:
                 f"the upload is larger than {self._limits.max_upload_bytes} bytes"
             )
         track_id = await asyncio.to_thread(self._inspect, data)
-        known = await self._board.find(track_id)
-        if known is not None and not isinstance(known, Failed):
+        if not await self._reserve(track_id):
             return track_id
-        if await self._board.analysing_count() >= self._limits.max_pending:
-            raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
-        await self._blobs.put(upload_key(track_id), data)
-        await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
         try:
+            await self._blobs.put(upload_key(track_id), data)
             await self._jobs.enqueue(AnalysisJob(track_id=track_id))
-        except Exception:
+        except BaseException:
             await self._board.record(track_id, NOT_QUEUED)
             await self._blobs.delete(upload_key(track_id))
             raise
         return track_id
+
+    async def _reserve(self, track_id: TrackId) -> bool:
+        async with self._reserving:
+            known = await self._board.find(track_id)
+            if known is not None and not isinstance(known, Failed):
+                return False
+            if await self._board.analysing_count() >= self._limits.max_pending:
+                limit = self._limits.max_pending
+                raise AnalysisQueueFullError(f"{limit} analyses are already queued")
+            await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
+            return True
 
     def _inspect(self, data: bytes) -> TrackId:
         probe = self._decoder.probe(data)
@@ -76,6 +85,12 @@ class TrackService:
             limit_s = self._limits.max_duration_s
             raise TrackTooLongError(
                 f"the track lasts {probe.duration_s:.0f} s, over {limit_s:.0f} s"
+            )
+        decoded_samples = probe.duration_s * probe.sample_rate_hz * probe.channel_count
+        if decoded_samples > self._limits.max_decoded_samples:
+            limit = self._limits.max_decoded_samples
+            raise TrackTooLongError(
+                f"the track decodes to {decoded_samples:.0f} samples, over {limit}"
             )
         return TrackId.of_content(data)
 
@@ -89,5 +104,5 @@ class TrackService:
             raise TrackNotFoundError(f"the timeline of track {track_id.value} is gone")
         return timeline
 
-    def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
+    def watch(self, track_id: TrackId) -> AsyncGenerator[TrackStatus]:
         return self._board.watch(track_id)

@@ -14,7 +14,7 @@ const INFO: TrackInfo = {
 const TIMELINE = { frameCount: 1 } as Timeline;
 
 class FakeApi implements Api {
-  uploads: string[] = [];
+  uploads: Blob[] = [];
   following = 0;
   constructor(
     private readonly events: TrackEvent[],
@@ -26,11 +26,11 @@ class FakeApi implements Api {
     return this.protocolVersion;
   }
 
-  async upload(_file: Blob, filename: string): Promise<string> {
+  async upload(file: Blob): Promise<string> {
     if (this.uploadError !== null) {
       throw this.uploadError;
     }
-    this.uploads.push(filename);
+    this.uploads.push(file);
     return INFO.trackId;
   }
 
@@ -95,7 +95,7 @@ describe("loading a track", () => {
       LIVE,
     );
     expect(loaded).toEqual({ info: INFO, timeline: TIMELINE, audio: "audio" });
-    expect(api.uploads).toEqual(["kicks.wav"]);
+    expect(api.uploads).toEqual([WAV]);
     expect(progress).toEqual([
       [0, "читаю файл"],
       [UPLOAD_SHARE, "декодирую"],

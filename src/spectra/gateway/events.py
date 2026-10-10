@@ -1,10 +1,14 @@
-from collections.abc import AsyncIterator, Mapping
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from contextlib import aclosing
+from dataclasses import dataclass
 from typing import Final
 
 from pydantic import BaseModel
 
 from spectra.gateway.errors import FAILURE_CODES
 from spectra.gateway.schemas import ErrorBody, ProgressBody, track_info
+from spectra.gateway.slots import Slot, Slots
 from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, TrackStatus
 
 EVENT_STREAM_MEDIA_TYPE: Final = "text/event-stream"
@@ -12,6 +16,12 @@ EVENT_STREAM_HEADERS: Final[Mapping[str, str]] = {
     "Cache-Control": "no-cache",
     "X-Accel-Buffering": "no",
 }
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EventStreams:
+    slots: Slots
+    lifetime_s: float
 
 
 def sse_event(name: str, payload: BaseModel) -> str:
@@ -33,3 +43,25 @@ async def status_events(
 ) -> AsyncIterator[str]:
     async for status in statuses:
         yield status_event(track_id, status)
+
+
+async def until_deadline(
+    statuses: AsyncGenerator[TrackStatus], *, lifetime_s: float
+) -> AsyncGenerator[TrackStatus]:
+    deadline_s = asyncio.get_running_loop().time() + lifetime_s
+    async with aclosing(statuses):
+        while True:
+            try:
+                async with asyncio.timeout_at(deadline_s):
+                    status = await anext(statuses)
+            except StopAsyncIteration, TimeoutError:
+                return
+            yield status
+
+
+async def holding(slot: Slot, events: AsyncIterator[str]) -> AsyncIterator[str]:
+    try:
+        async for event in events:
+            yield event
+    finally:
+        slot.release()

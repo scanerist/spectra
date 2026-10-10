@@ -53,7 +53,9 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 yield
                 await worker.close()
         else:
-            async with open_hosted(hosted, consumer=consumer_name()) as adapters:
+            async with open_hosted(
+                hosted, consumer=consumer_name(), max_subscriptions=settings.max_event_streams
+            ) as adapters:
                 hosted_tracks = hosted_parts(adapters, settings)
                 install_track_service(app, track_service(hosted_tracks, settings))
                 install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))

@@ -63,9 +63,11 @@ export interface EventStream {
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type OpenEventStream = (url: string) => EventStream;
+export type Wait = (delayMs: number) => Promise<void>;
 
 const CLOSED = 2;
 const UPLOAD_FILENAME = "track";
+const STREAM_RETRY_MS = 3_000;
 const GATEWAY_STATUSES: readonly number[] = [502, 503, 504];
 
 export interface Api {
@@ -76,7 +78,11 @@ export interface Api {
   follow(trackId: string, onEvent: (event: TrackEvent) => void): () => void;
 }
 
-export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
+export function createApi(
+  fetchFn: Fetch,
+  openStream: OpenEventStream,
+  wait: Wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+): Api {
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
     const response = await reach(fetchFn, path, init);
     if (!response.ok) {
@@ -110,11 +116,15 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
       return decodeTimeline(await response.arrayBuffer());
     },
     follow(trackId, onEvent) {
-      const stream = openStream(`/tracks/${encodeURIComponent(trackId)}/events`);
+      const path = `/tracks/${encodeURIComponent(trackId)}`;
       let settled = false;
+      let stream: EventStream | null = null;
       const settle = (event: TrackEvent) => {
+        if (settled) {
+          return;
+        }
         settled = true;
-        stream.close();
+        stream?.close();
         onEvent(event);
       };
       const read = (build: () => TrackEvent) => {
@@ -134,30 +144,51 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
           settle(event);
         }
       };
-      stream.addEventListener("progress", (event) =>
-        read(() => {
-          const body = parse(event.data);
-          return {
-            kind: "progress",
-            stage: field(body, "stage", isStage),
-            progress: field(body, "progress", isNumber),
-          };
-        }),
-      );
-      stream.addEventListener("ready", (event) =>
-        read(() => ({ kind: "ready", info: trackInfo(parse(event.data)) })),
-      );
-      stream.addEventListener("failed", (event) =>
-        read(() => ({ kind: "failed", error: errorBody(parse(event.data)) })),
-      );
-      stream.onerror = () => {
-        if (!settled && stream.readyState === CLOSED) {
-          settle({ kind: "failed", error: new ApiError("internal", "the event stream closed") });
+      const recover = async () => {
+        try {
+          const response = await request(path);
+          settle({ kind: "ready", info: trackInfo(await response.json()) });
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "not_ready") {
+            await wait(STREAM_RETRY_MS);
+            if (!settled) {
+              open();
+            }
+            return;
+          }
+          settle({ kind: "failed", error: unreadable(error) });
         }
       };
+      const open = () => {
+        const opened = openStream(`${path}/events`);
+        stream = opened;
+        opened.addEventListener("progress", (event) =>
+          read(() => {
+            const body = parse(event.data);
+            return {
+              kind: "progress",
+              stage: field(body, "stage", isStage),
+              progress: field(body, "progress", isNumber),
+            };
+          }),
+        );
+        opened.addEventListener("ready", (event) =>
+          read(() => ({ kind: "ready", info: trackInfo(parse(event.data)) })),
+        );
+        opened.addEventListener("failed", (event) =>
+          read(() => ({ kind: "failed", error: errorBody(parse(event.data)) })),
+        );
+        opened.onerror = () => {
+          if (!settled && opened.readyState === CLOSED) {
+            opened.close();
+            void recover();
+          }
+        };
+      };
+      open();
       return () => {
         settled = true;
-        stream.close();
+        stream?.close();
       };
     },
   };

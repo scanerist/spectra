@@ -69,16 +69,35 @@ class FakeStream implements EventStream {
   }
 }
 
-function following(): { stream: FakeStream; events: TrackEvent[]; urls: string[] } {
-  const stream = new FakeStream();
+function following(answer: () => Response = () => json({})): {
+  stream: FakeStream;
+  streams: FakeStream[];
+  events: TrackEvent[];
+  urls: string[];
+} {
+  const streams: FakeStream[] = [];
   const urls: string[] = [];
   const events: TrackEvent[] = [];
-  const api = createApi(answering(() => json({})).fetchFn, (url) => {
-    urls.push(url);
-    return stream;
-  });
+  const api = createApi(
+    answering(answer).fetchFn,
+    (url) => {
+      urls.push(url);
+      const stream = new FakeStream();
+      streams.push(stream);
+      return stream;
+    },
+    async () => {},
+  );
   api.follow("9f2c41d07a3b55e1", (event) => events.push(event));
-  return { stream, events, urls };
+  const [stream] = streams;
+  if (stream === undefined) {
+    throw new Error("follow opened no stream");
+  }
+  return { stream, streams, events, urls };
+}
+
+async function settled(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 async function rejection(promise: Promise<unknown>): Promise<ApiError> {
@@ -227,10 +246,33 @@ describe("following the analysis", () => {
     expect(stream.closed).toBe(true);
   });
 
-  it("fails when the stream closes before settling", () => {
-    const { stream, events } = following();
+  it("asks for the track when the stream closes and settles with it when ready", async () => {
+    const { stream, events } = following(() => json(TRACK_JSON));
     stream.drop(2);
-    expect(events.map((event) => event.kind)).toEqual(["failed"]);
+    await settled();
+    expect(events.map((event) => event.kind)).toEqual(["ready"]);
+  });
+
+  it("settles with the track's error when the stream closes on a failed track", async () => {
+    const { stream, events } = following(() =>
+      json({ error: "undecodable", message: "lost sync" }, 422),
+    );
+    stream.drop(2);
+    await settled();
+    const last = events.at(-1);
+    expect(last?.kind === "failed" && last.error.code).toBe("undecodable");
+  });
+
+  it("opens the stream again while the track is still analysing", async () => {
+    const { stream, streams, events, urls } = following(() =>
+      json({ error: "not_ready", message: "running" }, 409),
+    );
+    stream.drop(2);
+    await settled();
+    expect(events).toEqual([]);
+    expect(urls).toHaveLength(2);
+    streams[1]?.emit("ready", TRACK_JSON);
+    expect(events.map((event) => event.kind)).toEqual(["ready"]);
   });
 
   it("lets the browser reconnect while the stream is only interrupted", () => {

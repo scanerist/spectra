@@ -1,6 +1,6 @@
 # Деплой
 
-Прод — один VPS с docker compose. На сервер попадают два файла: `compose.prod.yaml` (как `~/spectra/compose.yaml`) и `.env`, который собирается из переменных и секретов GitHub при каждом деплое. Руками на сервере ничего не правится.
+Прод — один VPS с docker compose. На сервер попадают `compose.prod.yaml` (как `~/spectra/compose.yaml`), каталог `deploy/` с конфигами Prometheus и Grafana (как `~/spectra/deploy`) и `.env`, который собирается из переменных и секретов GitHub при каждом деплое. Руками на сервере ничего не правится.
 
 ## Что работает на сервере
 
@@ -16,12 +16,14 @@
 
 Счётчики одновременных загрузок, потоков и таймлайнов живут в памяти процесса api, поэтому api должен оставаться одним процессом с одной репликой; иначе каждая реплика пропустит свою долю. Воркер раз в час переводит в `failed` разборы, о которых два часа не было новостей (например, api перезапустили посреди загрузки), чтобы они не занимали очередь.
 
+`prometheus` и `grafana` входят в профиль `monitoring`: деплой пишет `COMPOSE_PROFILES=monitoring` в `.env` на сервере, поэтому `docker compose` там поднимает и их. Без профиля они не стартуют, но `SPECTRA_GRAFANA_BIND_ADDRESS`, `SPECTRA_GRAFANA_PORT` и `GRAFANA_ADMIN_PASSWORD` всё равно нужны: compose подставляет переменные во весь файл.
+
 `api` и `worker` стартуют только после успешного `migrate`. Healthcheck api — `GET /ready`: пока какое-то хранилище не отвечает, контейнер не считается здоровым, и `up --wait` ждёт.
 
 ## Как запускается
 
 - Пуш тега `v*` (например, `git tag v0.1.0 && git push origin v0.1.0`) или ручной запуск workflow `deploy` в Actions на теге `v*`. С ветки workflow сразу останавливается, а окружение `production` (ниже) вообще не отдаёт ей секреты.
-- Workflow собирает образы `ghcr.io/<владелец>/<репозиторий>:<коммит>` (движок) и `ghcr.io/<владелец>/<репозиторий>/web:<коммит>` (Caddy с веб-клиентом), кладёт файлы на сервер, делает `docker compose pull` и `up --wait`, затем `spectra-smoke` внутри контейнера api и `GET https://<домен>/health` снаружи.
+- Workflow собирает образы `ghcr.io/<владелец>/<репозиторий>:<коммит>` (движок) и `ghcr.io/<владелец>/<репозиторий>/web:<коммит>` (Caddy с веб-клиентом), кладёт на сервер compose-файл, заново копирует `deploy/` (старый `~/spectra/deploy` сначала удаляется) и `.env`, делает `docker compose pull` и `up --wait`, затем `spectra-smoke` внутри контейнера api и `GET https://<домен>/health` снаружи.
 - Откат — ручной запуск `deploy` на предыдущем теге. Миграции пока только добавляют, старый код с новой схемой работает.
 
 ## Сервер, один раз
@@ -114,7 +116,16 @@ Compose задаёт их сам, перечислены для запуска �
 
 С компьютера: `ssh -L 3000:127.0.0.1:<SPECTRA_GRAFANA_PORT> <пользователь>@<сервер>`, потом http://localhost:3000, вход `admin` и `GRAFANA_ADMIN_PASSWORD`. Дашборд Spectra открывается сразу: загрузки и анализы в минуту, время анализа (p50, p95), очередь, время ответа по маршрутам, ошибки и `429`, память api и воркера, удалённые за сутки разборы.
 
-Дашборд и источник данных задаются в `compose.prod.yaml` (раздел `configs`) и перезаписываются при каждом деплое: правки в интерфейсе Grafana не сохраняются, меняйте JSON в репозитории. В выражениях там `$$` вместо `$`, иначе compose примет их за свои переменные.
+Конфиги лежат в репозитории и подключаются в `compose.prod.yaml` через `configs: … file: ./deploy/…`; пути внутри контейнеров прежние.
+
+| Файл | В контейнере |
+|---|---|
+| `deploy/prometheus/prometheus.yml` | `/etc/prometheus/prometheus.yml` |
+| `deploy/grafana/provisioning/datasources/spectra.yaml` | `/etc/grafana/provisioning/datasources/spectra.yaml` |
+| `deploy/grafana/provisioning/dashboards/spectra.yaml` | `/etc/grafana/provisioning/dashboards/spectra.yaml` |
+| `deploy/grafana/dashboards/spectra.json` | `/etc/grafana/dashboards/spectra.json` |
+
+Они перезаписываются при каждом деплое: правки в интерфейсе Grafana не сохраняются, меняйте JSON в репозитории. Это обычные файлы, compose их не интерполирует, так что `$__rate_interval` пишется как есть, без `$$`.
 
 Логи — `docker compose logs api worker`, по строке JSON на запись.
 
@@ -122,9 +133,11 @@ Compose задаёт их сам, перечислены для запуска �
 
 Движок на `127.0.0.1:8000` (`uv run spectra`), потом в `web/`: `npm ci`, `npm run dev`. Vite проксирует `/tracks` и `/health` на движок (`SPECTRA_ENGINE_URL`, если он на другом адресе), так что клиент, как и в проде, ходит только на свой адрес. Перед коммитом — `npm run check`.
 
-## Локально весь стек
+## Локальный стек в Docker
 
-`cp .env.example .env`, поменять пароли, `docker compose up --build --wait`. Api на `SPECTRA_BIND_ADDRESS:SPECTRA_API_PORT`, без Caddy и TLS. `spectra-smoke http://127.0.0.1:8000` проверяет весь путь от загрузки до таймлайна.
+`compose.yaml` — простой стек для того, кто склонировал репозиторий: `docker compose up`, потом http://localhost:8080. Два сервиса: `api` в режиме `local` (всё в памяти, воркер внутри, порты наружу не публикуются) и `web` — тот же образ Caddy с веб-клиентом, что в проде, но с `SPECTRA_DOMAIN=http://localhost`: обычный HTTP без TLS, на `127.0.0.1:${SPECTRA_WEB_PORT:-8080}`. `.env` не нужен; `.env.example` перечисляет то, что можно переопределить. `uv run spectra-smoke http://localhost:8080` проверяет весь путь от загрузки до таймлайна через Caddy. CI-джоб `local` поднимает этот стек на каждом PR.
+
+Серверный режим целиком (Postgres, Redis, S3, воркер, мониторинг) локально поднимается так же, как в CI-джобе `image`: собрать образы `spectra:local` и `spectra-web:local` и запустить `compose.prod.yaml` с переменными из `env` этого джоба.
 
 ## Что важно знать
 

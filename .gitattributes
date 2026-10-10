@@ -13,3 +13,4 @@ web/**/*.woff2 binary
 web/Caddyfile text eol=lf
 web/Dockerfile text eol=lf
 web/.dockerignore text eol=lf
+deploy/**/*.json text eol=lf

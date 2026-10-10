@@ -3,7 +3,6 @@ import io
 import json
 import logging
 import math
-import struct
 import sys
 import uuid
 from dataclasses import dataclass
@@ -15,6 +14,8 @@ import numpy as np
 import soundfile
 
 from spectra.bootstrap.settings import Settings
+from spectra.gateway.protocol import PROTOCOL_VERSION
+from spectra.gateway.timeline_codec import HEADER, timeline_length
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,6 @@ KICK_FREQ_HZ: Final = 55.0
 KICK_DECAY_S: Final = 0.06
 BPM_TOLERANCE: Final = 1.0
 REQUEST_TIMEOUT_S: Final = 60.0
-TIMELINE_HEADER: Final = struct.Struct("<IfII")
-PROTOCOL_VERSION: Final = 1
-TIMELINE_BYTES_PER_BAR: Final = 264
-TIMELINE_BYTES_PER_FRAME: Final = 69
 
 
 class SmokeTestError(Exception):
@@ -141,12 +138,8 @@ def run_smoke_test(base_url: str) -> SmokeReport:
 
 
 def timeline_counts(timeline: bytes) -> dict[str, int]:
-    version, _, frame_count, bar_count = TIMELINE_HEADER.unpack_from(timeline)
-    expected_bytes = (
-        TIMELINE_HEADER.size
-        + TIMELINE_BYTES_PER_BAR * bar_count
-        + TIMELINE_BYTES_PER_FRAME * frame_count
-    )
+    version, _, frame_count, bar_count = HEADER.unpack_from(timeline)
+    expected_bytes = timeline_length(frame_count=frame_count, bar_count=bar_count)
     if version != PROTOCOL_VERSION or len(timeline) != expected_bytes:
         raise SmokeTestError(f"malformed timeline: version {version}, {len(timeline)} bytes")
     return {"frame_count": frame_count, "bar_count": bar_count}

@@ -30,10 +30,12 @@ class SlowBlobStore(InMemoryBlobStore):
     def __init__(self, *, put_error: Exception | None = None) -> None:
         super().__init__()
         self.release = asyncio.Event()
+        self.entered = asyncio.Event()
         self._put_error = put_error
 
     @override
     async def put(self, key: str, data: bytes) -> None:
+        self.entered.set()
         await self.release.wait()
         if self._put_error is not None:
             raise self._put_error
@@ -195,5 +197,19 @@ async def test_a_track_whose_upload_was_not_stored_fails_and_can_be_retried() ->
     service, _, jobs, _ = service_with(blobs=blobs)
     with pytest.raises(ConnectionError):
         await service.submit(DATA)
+    assert await service.status(TrackId.of_content(DATA)) == NOT_QUEUED
+    assert jobs.jobs == []
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_upload_gives_its_queue_slot_back() -> None:
+    blobs = SlowBlobStore()
+    service, _, jobs, _ = service_with(blobs=blobs)
+    upload = asyncio.create_task(service.submit(DATA))
+    async with asyncio.timeout(5.0):
+        await blobs.entered.wait()
+    upload.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await upload
     assert await service.status(TrackId.of_content(DATA)) == NOT_QUEUED
     assert jobs.jobs == []

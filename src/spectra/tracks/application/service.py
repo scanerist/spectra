@@ -62,7 +62,7 @@ class TrackService:
         try:
             await self._blobs.put(upload_key(track_id), data)
             await self._jobs.enqueue(AnalysisJob(track_id=track_id))
-        except Exception:
+        except BaseException:
             await self._board.record(track_id, NOT_QUEUED)
             await self._blobs.delete(upload_key(track_id))
             raise

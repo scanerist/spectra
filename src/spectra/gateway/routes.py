@@ -28,7 +28,6 @@ from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, Track
 
 TRACK_SERVICE_STATE: Final = "track_service"
 UPLOAD_ADMISSION_STATE: Final = "upload_admission"
-UPLOAD_CHUNK_BYTES: Final = 1 << 20
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
 IPV6_CLIENT_PREFIX: Final = 64
@@ -92,14 +91,10 @@ def client_address(request: Request) -> str:
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     if upload is None:
         raise EmptyUploadError("the request has no file part")
-    chunks: list[bytes] = []
-    received = 0
-    while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
-        received += len(chunk)
-        if received > limit:
-            raise FileTooLargeError(f"the upload is larger than {limit} bytes")
-        chunks.append(chunk)
-    return b"".join(chunks)
+    data = await upload.read()
+    if len(data) > limit:
+        raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+    return data
 
 
 async def ready_summary(service: TrackService, track_id: str) -> tuple[TrackId, TrackSummary]:

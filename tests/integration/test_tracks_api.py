@@ -140,6 +140,13 @@ def test_a_chunked_upload_over_the_limit_is_file_too_large(api: Api) -> None:
     assert response.json()["error"] == "file_too_large"
 
 
+def test_upload_exactly_at_the_limit_is_accepted(api: Api) -> None:
+    full = b"x" * LIMIT_BYTES
+    response = api.client.post("/tracks", files={"file": ("t.wav", full, "audio/wav")})
+    assert response.status_code == 202
+    assert response.json() == {"track_id": TrackId.of_content(full).value}
+
+
 def test_upload_over_the_limit_is_file_too_large(api: Api) -> None:
     big = b"x" * (LIMIT_BYTES + 1)
     response = api.client.post("/tracks", files={"file": ("t.wav", big, "audio/wav")})

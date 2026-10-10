@@ -126,7 +126,7 @@ def create_router() -> APIRouter:
         request: Request, service: Service, admission: Admission
     ) -> TrackCreated:
         client = client_address(request)
-        await admission.admit(client)
+        charge = await admission.admit(client)
         async with request.form(max_files=1, max_fields=0) as form:
             upload = form.get("file")
             data = await read_upload(
@@ -136,7 +136,7 @@ def create_router() -> APIRouter:
         try:
             track_id = await service.submit(data)
         except AnalysisQueueFullError:
-            await admission.refund(client)
+            await admission.refund(charge)
             raise
         return TrackCreated(track_id=track_id.value)
 

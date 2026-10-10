@@ -6,19 +6,21 @@ from spectra.tracks.adapters.memory import InMemoryUploadQuota
 from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.domain.errors import InvalidQuotaError, UploadQuotaExceededError
 from spectra.tracks.domain.quota import QuotaDecision, UploadQuotaPolicy
-from tests.fakes import ExhaustedQuota, FakeClock
+from tests.fakes import ExhaustedQuota, FakeClock, UnlimitedQuota
 
 HOUR_S = 3_600.0
 POLICY = UploadQuotaPolicy(uploads=3, window_s=HOUR_S)
 
 
 def test_uploads_within_the_quota_are_allowed() -> None:
-    assert POLICY.decide(used=3, now_s=10.0) == QuotaDecision(allowed=True, retry_after_s=0.0)
+    assert POLICY.decide(used=3, now_s=10.0) == QuotaDecision(
+        allowed=True, retry_after_s=0.0, window=0
+    )
 
 
 def test_an_upload_over_the_quota_waits_for_the_next_window() -> None:
     assert POLICY.decide(used=4, now_s=HOUR_S + 600.0) == QuotaDecision(
-        allowed=False, retry_after_s=3_000.0
+        allowed=False, retry_after_s=3_000.0, window=1
     )
 
 
@@ -65,11 +67,18 @@ async def test_admission_refuses_a_client_over_its_quota() -> None:
 
 
 @pytest.mark.anyio
+async def test_admission_refunds_the_window_it_charged() -> None:
+    quota = UnlimitedQuota(window=7)
+    admission = UploadAdmission(quota=quota)
+    await admission.refund(await admission.admit("1.2.3.4"))
+    assert quota.refunds == [("1.2.3.4", 7)]
+
+
+@pytest.mark.anyio
 async def test_a_refunded_upload_frees_its_place() -> None:
     quota = InMemoryUploadQuota(policy=POLICY, clock=FakeClock(start_s=100.0))
-    for _ in range(3):
-        await quota.spend("1.2.3.4")
-    await quota.refund("1.2.3.4")
+    charged = [await quota.spend("1.2.3.4") for _ in range(3)]
+    await quota.refund("1.2.3.4", window=charged[-1].window)
     assert (await quota.spend("1.2.3.4")).allowed
     assert not (await quota.spend("1.2.3.4")).allowed
 
@@ -77,6 +86,18 @@ async def test_a_refunded_upload_frees_its_place() -> None:
 @pytest.mark.anyio
 async def test_a_refund_without_uploads_changes_nothing() -> None:
     quota = InMemoryUploadQuota(policy=POLICY, clock=FakeClock(start_s=100.0))
-    await quota.refund("1.2.3.4")
+    await quota.refund("1.2.3.4", window=0)
     decisions = [await quota.spend("1.2.3.4") for _ in range(4)]
     assert [decision.allowed for decision in decisions] == [True, True, True, False]
+
+
+@pytest.mark.anyio
+async def test_a_refund_for_an_earlier_window_leaves_the_current_one_alone() -> None:
+    clock = FakeClock(start_s=HOUR_S - 1.0)
+    quota = InMemoryUploadQuota(policy=POLICY, clock=clock)
+    earlier = await quota.spend("1.2.3.4")
+    clock.advance(1.0)
+    for _ in range(3):
+        await quota.spend("1.2.3.4")
+    await quota.refund("1.2.3.4", window=earlier.window)
+    assert not (await quota.spend("1.2.3.4")).allowed

@@ -165,6 +165,14 @@ def test_created_app_serves_health() -> None:
     assert client.get("/health").json() == {"ok": True, "protocol": 1}
 
 
+@pytest.mark.parametrize(
+    "path", ["/docs", "/redoc", "/openapi.json"], ids=["docs", "redoc", "schema"]
+)
+def test_created_app_does_not_publish_its_schema(path: str) -> None:
+    client = TestClient(bootstrap_app.create_app(Settings()))
+    assert client.get(path).status_code == 404
+
+
 def test_run_serves_the_app_with_configured_host_and_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

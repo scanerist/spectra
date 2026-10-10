@@ -83,7 +83,13 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 )
                 yield
 
-    app = FastAPI(title="spectra engine", lifespan=lifespan)
+    app = FastAPI(
+        title="spectra engine",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.include_router(create_router())
     install_error_handlers(app)
     install_upload_limit(app, max_upload_bytes=settings.max_upload_bytes)

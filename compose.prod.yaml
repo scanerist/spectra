@@ -134,7 +134,7 @@ services:
 
   grafana:
     <<: *service
-    image: grafana/grafana:12.1.0
+    image: grafana/grafana:13.2.3
     profiles: [monitoring]
     environment:
       GF_SECURITY_ADMIN_USER: admin

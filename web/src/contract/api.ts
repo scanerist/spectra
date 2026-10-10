@@ -1,6 +1,7 @@
 import { decodeTimeline, type Timeline } from "./timeline";
 
 export const PROTOCOL_VERSION = 1;
+export const STREAM_RETRIES = 5;
 
 const ERROR_CODES = [
   "no_file",
@@ -111,6 +112,7 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
     follow(trackId, onEvent) {
       const stream = openStream(`/tracks/${encodeURIComponent(trackId)}/events`);
       let settled = false;
+      let drops = 0;
       const settle = (event: TrackEvent) => {
         settled = true;
         stream.close();
@@ -120,6 +122,7 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
         if (settled) {
           return;
         }
+        drops = 0;
         let event: TrackEvent;
         try {
           event = build();
@@ -150,8 +153,17 @@ export function createApi(fetchFn: Fetch, openStream: OpenEventStream): Api {
         read(() => ({ kind: "failed", error: errorBody(parse(event.data)) })),
       );
       stream.onerror = () => {
-        if (!settled && stream.readyState === CLOSED) {
+        if (settled) {
+          return;
+        }
+        drops += 1;
+        if (stream.readyState === CLOSED) {
           settle({ kind: "failed", error: new ApiError("internal", "the event stream closed") });
+        } else if (drops >= STREAM_RETRIES) {
+          settle({
+            kind: "failed",
+            error: new ApiError("unavailable", "the event stream keeps dropping"),
+          });
         }
       };
       return () => {

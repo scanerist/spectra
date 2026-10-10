@@ -114,6 +114,7 @@ services:
   prometheus:
     <<: *service
     image: prom/prometheus:v3.5.0
+    profiles: [monitoring]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -134,6 +135,7 @@ services:
   grafana:
     <<: *service
     image: grafana/grafana:12.1.0
+    profiles: [monitoring]
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}

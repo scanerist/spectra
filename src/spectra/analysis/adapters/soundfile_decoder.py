@@ -64,9 +64,12 @@ class SoundfileDecoder:
 
 def decoded_mono(data: bytes, sample_rate_hz: int) -> Float32Array:
     with soundfile.SoundFile(io.BytesIO(data)) as audio:
-        blocks = audio.blocks(BLOCK_FRAMES, dtype="float32", always_2d=True)
-        mono_blocks = (np.mean(block, axis=1, dtype=np.float32) for block in blocks)
-        return np.concatenate([*resampled(mono_blocks, sample_rate_hz), EMPTY_BLOCK])
+        return np.concatenate([*resampled(mono_blocks(audio), sample_rate_hz), EMPTY_BLOCK])
+
+
+def mono_blocks(audio: soundfile.SoundFile) -> Iterator[Float32Array]:
+    while (block := audio.read(BLOCK_FRAMES, dtype="float32", always_2d=True)).shape[0]:
+        yield np.mean(block, axis=1, dtype=np.float32)
 
 
 def resampled(blocks: Iterator[Float32Array], sample_rate_hz: int) -> Iterator[Float32Array]:

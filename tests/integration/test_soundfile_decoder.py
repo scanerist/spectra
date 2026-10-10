@@ -1,8 +1,10 @@
+import io
 import tracemalloc
 from typing import Final
 
 import numpy as np
 import pytest
+import soundfile
 
 from spectra.analysis.adapters.soundfile_decoder import (
     MAX_CHANNELS,
@@ -148,3 +150,15 @@ def test_decoding_in_blocks_keeps_the_tone_and_its_level(decoder: AudioDecoder) 
     middle = signal.samples[ANALYSIS_SAMPLE_RATE_HZ : 2 * ANALYSIS_SAMPLE_RATE_HZ]
     expected = tone(1_000.0, 1.0, ANALYSIS_SAMPLE_RATE_HZ)
     assert np.sqrt(np.mean(middle**2)) == pytest.approx(np.sqrt(np.mean(expected**2)), rel=0.02)
+
+
+@pytest.mark.parametrize("kept", [0.1, 0.55], ids=["tenth", "half"])
+def test_a_truncated_mp3_decodes_only_the_audio_it_holds(
+    decoder: AudioDecoder, kept: float
+) -> None:
+    data = encoded(tone(440.0, 6.0, ANALYSIS_SAMPLE_RATE_HZ), ANALYSIS_SAMPLE_RATE_HZ, "MP3")
+    truncated = data[: int(len(data) * kept)]
+    frames, _ = soundfile.read(io.BytesIO(truncated), dtype="float32")
+    signal = decoder.decode(truncated)
+    assert signal.sample_count == len(frames)
+    assert np.abs(signal.samples).max() <= 1.0

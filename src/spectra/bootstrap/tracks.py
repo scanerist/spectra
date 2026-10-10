@@ -9,6 +9,7 @@ from spectra.bootstrap.settings import Settings
 from spectra.gateway.events import EventStreams
 from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
+from spectra.gateway.upload_limit import UploadPace
 from spectra.shared.clock import MonotonicClock
 from spectra.tracks.adapters.memory import (
     InMemoryBlobStore,
@@ -33,6 +34,8 @@ TIMELINE_RETRY_AFTER_S: Final = 5.0
 UPLOADS_PER_NETWORK: Final = 1
 TIMELINES_PER_ADDRESS: Final = 2
 TIMELINES_PER_NETWORK: Final = 4
+UPLOAD_GRACE_S: Final = 30.0
+UPLOAD_IDLE_S: Final = 30.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -122,6 +125,14 @@ def timeline_slots(settings: Settings) -> Slots:
         retry_after_s=TIMELINE_RETRY_AFTER_S,
     )
     return Slots(limits=limits, name="timelines")
+
+
+def upload_pace(settings: Settings) -> UploadPace:
+    return UploadPace(
+        min_bytes_per_s=settings.min_upload_bytes_per_s,
+        grace_s=UPLOAD_GRACE_S,
+        idle_s=UPLOAD_IDLE_S,
+    )
 
 
 def analysis_observer(registry: CollectorRegistry) -> AnalysisObserver:

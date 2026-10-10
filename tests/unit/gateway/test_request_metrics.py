@@ -7,7 +7,7 @@ from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.request_metrics import install_request_metrics
 from spectra.gateway.routes import create_router
 from spectra.gateway.upload_limit import install_upload_limit
-from tests.fakes import FakeClock
+from tests.fakes import RELAXED_PACE, FakeClock
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def client(registry: CollectorRegistry) -> TestClient:
     app = FastAPI()
     app.include_router(create_router())
     install_error_handlers(app)
-    install_upload_limit(app, max_upload_bytes=10)
+    install_upload_limit(app, max_upload_bytes=10, pace=RELAXED_PACE, clock=FakeClock())
     install_request_metrics(app, registry=registry, clock=FakeClock())
     return TestClient(app, raise_server_exceptions=False)
 

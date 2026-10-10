@@ -4,6 +4,7 @@ from typing import Final
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
 from spectra.analysis.domain.track_analysis import TrackAnalysis
+from spectra.gateway.upload_limit import UploadPace
 from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackStore
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
@@ -43,6 +44,7 @@ def probe_of(
 
 
 DEFAULT_PROBE: Final = probe_of()
+RELAXED_PACE: Final = UploadPace(min_bytes_per_s=1.0, grace_s=60.0, idle_s=60.0)
 
 
 class FakeDecoder:

@@ -35,7 +35,9 @@ from spectra.tracks.domain.track import (
 )
 from tests.contract.timeline_fixture import golden_analysis
 from tests.fakes import (
+    RELAXED_PACE,
     ExhaustedQuota,
+    FakeClock,
     FakeDecoder,
     FakeJobQueue,
     UnlimitedQuota,
@@ -86,7 +88,9 @@ class Api:
             name="timelines",
         )
         install_timeline_slots(app, self.timelines)
-        install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
+        install_upload_limit(
+            app, max_upload_bytes=LIMIT_BYTES, pace=RELAXED_PACE, clock=FakeClock()
+        )
         self.client = TestClient(app, raise_server_exceptions=False)
 
 

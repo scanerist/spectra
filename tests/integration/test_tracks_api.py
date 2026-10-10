@@ -32,6 +32,7 @@ from tests.fakes import (
     FakeJobQueue,
     UnlimitedQuota,
     memory_board,
+    probe_of,
     record_now,
 )
 
@@ -169,7 +170,7 @@ def test_an_accepted_upload_keeps_its_place_in_the_quota(api: Api) -> None:
 
 
 def test_track_over_the_duration_limit_is_file_too_large() -> None:
-    api = Api(decoder=FakeDecoder(duration_s=601.0))
+    api = Api(decoder=FakeDecoder(probe_result=probe_of(duration_s=601.0)))
     response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"

@@ -1,4 +1,5 @@
 import asyncio
+from typing import Final
 
 from spectra.analysis.application.ports import AudioFormat, AudioProbe
 from spectra.analysis.domain.signal import AudioSignal
@@ -30,6 +31,20 @@ class FakeClock:
         await asyncio.sleep(0)
 
 
+def probe_of(
+    *, duration_s: float = 180.0, sample_rate_hz: int = 44_100, channel_count: int = 2
+) -> AudioProbe:
+    return AudioProbe(
+        audio_format=AudioFormat.WAV,
+        duration_s=duration_s,
+        sample_rate_hz=sample_rate_hz,
+        channel_count=channel_count,
+    )
+
+
+DEFAULT_PROBE: Final = probe_of()
+
+
 class FakeDecoder:
     def __init__(
         self,
@@ -37,19 +52,20 @@ class FakeDecoder:
         signal: AudioSignal | None = None,
         probe_error: Exception | None = None,
         decode_error: Exception | None = None,
-        duration_s: float = 180.0,
+        probe_result: AudioProbe = DEFAULT_PROBE,
     ) -> None:
         self._signal = signal
-        self._duration_s = duration_s
+        self._probe_result = probe_result
         self._probe_error = probe_error
         self._decode_error = decode_error
+        self.probed: list[bytes] = []
         self.decoded: list[bytes] = []
 
     def probe(self, data: bytes) -> AudioProbe:
+        self.probed.append(data)
         if self._probe_error is not None:
             raise self._probe_error
-        audio_format = AudioFormat.WAV if data else AudioFormat.MP3
-        return AudioProbe(audio_format=audio_format, duration_s=self._duration_s)
+        return self._probe_result
 
     def decode(self, data: bytes) -> AudioSignal:
         self.decoded.append(data)

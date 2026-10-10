@@ -14,7 +14,7 @@ from spectra.tracks.domain.errors import (
     TrackTooLongError,
 )
 from spectra.tracks.domain.track import Analysing, Failed, FailureCode, TrackId
-from tests.fakes import FakeDecoder, FakeJobQueue, memory_board
+from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, probe_of
 
 DATA = b"RIFF fake wav bytes"
 MAX_DURATION_S = 600.0
@@ -101,7 +101,9 @@ async def test_upload_is_refused_while_the_queue_is_full() -> None:
 
 @pytest.mark.anyio
 async def test_track_longer_than_the_limit_is_rejected() -> None:
-    service, _, jobs, _ = service_with(FakeDecoder(duration_s=MAX_DURATION_S + 1.0))
+    service, _, jobs, _ = service_with(
+        FakeDecoder(probe_result=probe_of(duration_s=MAX_DURATION_S + 1.0))
+    )
     with pytest.raises(TrackTooLongError):
         await service.submit(DATA)
     assert jobs.jobs == []

@@ -19,6 +19,8 @@ CONTAINER_FORMATS: Final[Mapping[str, AudioFormat]] = {
     "MP3": AudioFormat.MP3,
 }
 RESAMPLE_QUALITY: Final = "HQ"
+MAX_SAMPLE_RATE_HZ: Final = 192_000
+MAX_CHANNELS: Final = 8
 
 
 class SoundfileDecoder:
@@ -31,7 +33,19 @@ class SoundfileDecoder:
         audio_format = CONTAINER_FORMATS.get(container)
         if audio_format is None:
             raise UnsupportedFormatError(f"expected mp3, wav, flac or ogg, got {container.lower()}")
-        return AudioProbe(audio_format=audio_format, duration_s=float(info.duration))
+        if info.samplerate > MAX_SAMPLE_RATE_HZ:
+            limit = f"sample rates above {MAX_SAMPLE_RATE_HZ} Hz are not supported"
+            raise UnsupportedFormatError(f"{limit}, got {info.samplerate}")
+        if info.channels > MAX_CHANNELS:
+            raise UnsupportedFormatError(
+                f"more than {MAX_CHANNELS} channels are not supported, got {info.channels}"
+            )
+        return AudioProbe(
+            audio_format=audio_format,
+            duration_s=float(info.duration),
+            sample_rate_hz=int(info.samplerate),
+            channel_count=int(info.channels),
+        )
 
     def decode(self, data: bytes) -> AudioSignal:
         self.probe(data)

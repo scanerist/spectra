@@ -19,6 +19,7 @@ from tests.fakes import FakeDecoder, FakeJobQueue, memory_board, probe_of
 DATA = b"RIFF fake wav bytes"
 MAX_DURATION_S = 600.0
 MAX_PENDING = 2
+MAX_DECODED_SAMPLES = 600 * 48_000 * 2
 
 
 def service_with(
@@ -39,6 +40,7 @@ def service_with(
             max_upload_bytes=max_upload_bytes,
             max_duration_s=MAX_DURATION_S,
             max_pending=MAX_PENDING,
+            max_decoded_samples=MAX_DECODED_SAMPLES,
         ),
     )
     return service, board, jobs, blobs
@@ -107,6 +109,24 @@ async def test_track_longer_than_the_limit_is_rejected() -> None:
     with pytest.raises(TrackTooLongError):
         await service.submit(DATA)
     assert jobs.jobs == []
+
+
+@pytest.mark.anyio
+async def test_track_at_the_decoded_sample_budget_is_accepted() -> None:
+    probe = probe_of(duration_s=MAX_DURATION_S, sample_rate_hz=48_000, channel_count=2)
+    service, _, jobs, _ = service_with(FakeDecoder(probe_result=probe))
+    await service.submit(DATA)
+    assert len(jobs.jobs) == 1
+
+
+@pytest.mark.anyio
+async def test_short_track_with_more_decoded_samples_than_the_budget_is_rejected() -> None:
+    probe = probe_of(duration_s=MAX_DURATION_S / 4, sample_rate_hz=192_000, channel_count=8)
+    service, _, jobs, blobs = service_with(FakeDecoder(probe_result=probe))
+    with pytest.raises(TrackTooLongError):
+        await service.submit(DATA)
+    assert jobs.jobs == []
+    assert await blobs.get(upload_key(TrackId.of_content(DATA))) is None
 
 
 @pytest.mark.anyio

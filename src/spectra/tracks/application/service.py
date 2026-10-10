@@ -25,6 +25,7 @@ class UploadLimits:
     max_upload_bytes: int
     max_duration_s: float
     max_pending: int
+    max_decoded_samples: int
 
 
 class TrackService:
@@ -76,6 +77,12 @@ class TrackService:
             limit_s = self._limits.max_duration_s
             raise TrackTooLongError(
                 f"the track lasts {probe.duration_s:.0f} s, over {limit_s:.0f} s"
+            )
+        decoded_samples = probe.duration_s * probe.sample_rate_hz * probe.channel_count
+        if decoded_samples > self._limits.max_decoded_samples:
+            limit = self._limits.max_decoded_samples
+            raise TrackTooLongError(
+                f"the track decodes to {decoded_samples:.0f} samples, over {limit}"
             )
         return TrackId.of_content(data)
 

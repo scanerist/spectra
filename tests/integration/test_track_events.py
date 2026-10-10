@@ -29,7 +29,9 @@ def client(board: StatusBoard) -> TestClient:
         board=board,
         blobs=InMemoryBlobStore(),
         jobs=FakeJobQueue(),
-        limits=UploadLimits(max_upload_bytes=100, max_duration_s=600.0, max_pending=4),
+        limits=UploadLimits(
+            max_upload_bytes=100, max_duration_s=600.0, max_pending=4, max_decoded_samples=10**9
+        ),
     )
     app = FastAPI()
     app.include_router(create_router())

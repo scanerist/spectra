@@ -73,6 +73,7 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
             max_upload_bytes=settings.max_upload_bytes,
             max_duration_s=settings.max_duration_s,
             max_pending=settings.max_pending_analyses,
+            max_decoded_samples=settings.max_decoded_samples,
         ),
     )
 

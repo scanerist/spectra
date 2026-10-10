@@ -53,7 +53,12 @@ class Api:
             board=self.board,
             blobs=self.blobs,
             jobs=self.jobs,
-            limits=UploadLimits(max_upload_bytes=LIMIT_BYTES, max_duration_s=600.0, max_pending=1),
+            limits=UploadLimits(
+                max_upload_bytes=LIMIT_BYTES,
+                max_duration_s=600.0,
+                max_pending=1,
+                max_decoded_samples=10**9,
+            ),
         )
         app = FastAPI()
         app.include_router(create_router())

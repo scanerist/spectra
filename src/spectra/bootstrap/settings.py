@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     max_tracks: int = Field(default=8, ge=1)
     max_pending_analyses: int = Field(default=4, ge=1)
     max_duration_s: float = Field(default=1_800.0, gt=0.0, allow_inf_nan=False)
+    max_decoded_samples: int = Field(default=1_800 * 96_000 * 2, ge=1)
     uploads_per_hour: int = Field(default=20, ge=1)
     forwarded_allow_ips: str = "127.0.0.1"
     metrics_port: int | None = Field(default=None, ge=0, le=65_535)

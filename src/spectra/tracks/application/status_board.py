@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from spectra.tracks.application.ports import ProgressFeed, TrackStore
 from spectra.tracks.domain.errors import TrackNotFoundError
@@ -32,7 +32,7 @@ class StatusBoard:
         await self._store.save(track_id, status)
         await self._feed.publish(track_id, status)
 
-    async def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
+    async def watch(self, track_id: TrackId) -> AsyncGenerator[TrackStatus]:
         async with self._feed.subscribe(track_id) as updates:
             status = await self.current(track_id)
             yield status

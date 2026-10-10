@@ -6,6 +6,8 @@ from prometheus_client import CollectorRegistry
 from spectra.analysis.adapters.soundfile_decoder import SoundfileDecoder
 from spectra.bootstrap.hosted import HostedAdapters
 from spectra.bootstrap.settings import Settings
+from spectra.gateway.events import EventStreams
+from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.shared.clock import MonotonicClock
 from spectra.tracks.adapters.memory import (
@@ -25,6 +27,7 @@ from spectra.tracks.application.worker import AnalysisWorker
 from spectra.tracks.domain.quota import UploadQuotaPolicy
 
 HOUR_S: Final = 3_600.0
+EVENT_STREAM_RETRY_AFTER_S: Final = 10.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -75,6 +78,18 @@ def track_service(parts: TrackParts, settings: Settings) -> TrackService:
             max_pending=settings.max_pending_analyses,
             max_decoded_samples=settings.max_decoded_samples,
         ),
+    )
+
+
+def event_streams(settings: Settings) -> EventStreams:
+    limits = SlotLimits(
+        total=settings.max_event_streams,
+        per_client=settings.max_event_streams_per_client,
+        retry_after_s=EVENT_STREAM_RETRY_AFTER_S,
+    )
+    return EventStreams(
+        slots=Slots(limits=limits, name="event streams"),
+        lifetime_s=settings.event_stream_lifetime_s,
     )
 
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.requests import HTTPConnection
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile
 
 from spectra.gateway.errors import (
@@ -13,7 +14,14 @@ from spectra.gateway.errors import (
     ErrorCode,
     GatewayNotConfiguredError,
 )
-from spectra.gateway.events import EVENT_STREAM_HEADERS, EVENT_STREAM_MEDIA_TYPE, status_events
+from spectra.gateway.events import (
+    EVENT_STREAM_HEADERS,
+    EVENT_STREAM_MEDIA_TYPE,
+    EventStreams,
+    holding,
+    status_events,
+    until_deadline,
+)
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
@@ -28,6 +36,7 @@ from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, Track
 
 TRACK_SERVICE_STATE: Final = "track_service"
 UPLOAD_ADMISSION_STATE: Final = "upload_admission"
+EVENT_STREAMS_STATE: Final = "event_streams"
 UPLOAD_CHUNK_BYTES: Final = 1 << 20
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
@@ -69,9 +78,21 @@ def upload_admission(connection: HTTPConnection) -> UploadAdmission:
     return admission
 
 
+def install_event_streams(app: FastAPI, streams: EventStreams) -> None:
+    setattr(app.state, EVENT_STREAMS_STATE, streams)
+
+
+def event_streams(connection: HTTPConnection) -> EventStreams:
+    streams = getattr(connection.app.state, EVENT_STREAMS_STATE, None)
+    if not isinstance(streams, EventStreams):
+        raise GatewayNotConfiguredError("the event streams are not installed on the app")
+    return streams
+
+
 type Service = Annotated[TrackService, Depends(track_service)]
 type Admission = Annotated[UploadAdmission, Depends(upload_admission)]
 type Probes = Annotated[Readiness, Depends(readiness)]
+type Streams = Annotated[EventStreams, Depends(event_streams)]
 
 
 def client_address(request: Request) -> str:
@@ -151,13 +172,18 @@ def create_router() -> APIRouter:
         return track_info(track, summary)
 
     @router.get("/tracks/{track_id}/events")
-    async def track_events(track_id: str, service: Service) -> StreamingResponse:
+    async def track_events(
+        track_id: str, request: Request, service: Service, streams: Streams
+    ) -> StreamingResponse:
         track = TrackId(track_id)
         await service.status(track)
+        slot = streams.slots.take(client_address(request))
+        statuses = until_deadline(service.watch(track), lifetime_s=streams.lifetime_s)
         return StreamingResponse(
-            status_events(track, service.watch(track)),
+            holding(slot, status_events(track, statuses)),
             media_type=EVENT_STREAM_MEDIA_TYPE,
             headers=dict(EVENT_STREAM_HEADERS),
+            background=BackgroundTask(slot.release),
         )
 
     @router.get("/tracks/{track_id}/timeline")

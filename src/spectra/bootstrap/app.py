@@ -12,6 +12,7 @@ from spectra.bootstrap.settings import HostedSettings, Mode, Settings
 from spectra.bootstrap.tracks import (
     analysis_observer,
     analysis_worker,
+    event_streams,
     hosted_parts,
     local_parts,
     track_service,
@@ -21,6 +22,7 @@ from spectra.gateway.readiness import Readiness, install_readiness
 from spectra.gateway.request_metrics import install_request_metrics
 from spectra.gateway.routes import (
     create_router,
+    install_event_streams,
     install_track_service,
     install_upload_admission,
 )
@@ -47,6 +49,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
             parts = local_parts(settings)
             install_track_service(app, track_service(parts, settings))
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
+            install_event_streams(app, event_streams(settings))
             worker = analysis_worker(parts, observer)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
@@ -59,6 +62,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 hosted_tracks = hosted_parts(adapters, settings)
                 install_track_service(app, track_service(hosted_tracks, settings))
                 install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))
+                install_event_streams(app, event_streams(settings))
                 install_readiness(
                     app,
                     Readiness(

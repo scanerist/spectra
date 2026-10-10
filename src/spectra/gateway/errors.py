@@ -80,10 +80,18 @@ class GatewayNotConfiguredError(GatewayError):
 
 
 class ApiError(GatewayError):
-    def __init__(self, code: ErrorCode, message: str) -> None:
+    def __init__(
+        self, code: ErrorCode, message: str, *, retry_after_s: float | None = None
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.retry_after_s = retry_after_s
+
+
+def with_retry_after(response: JSONResponse, retry_after_s: float) -> JSONResponse:
+    response.headers["Retry-After"] = str(max(1, math.ceil(retry_after_s)))
+    return response
 
 
 def error_response(code: ErrorCode, message: str) -> JSONResponse:
@@ -94,7 +102,10 @@ def error_response(code: ErrorCode, message: str) -> JSONResponse:
 async def handle_api_error(_request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, ApiError):
         return await handle_unexpected_error(_request, error)
-    return error_response(error.code, error.message)
+    response = error_response(error.code, error.message)
+    if error.retry_after_s is None:
+        return response
+    return with_retry_after(response, error.retry_after_s)
 
 
 async def handle_unexpected_error(_request: Request, error: Exception) -> JSONResponse:
@@ -121,9 +132,7 @@ async def handle_http_error(request: Request, error: Exception) -> Response:
 async def handle_quota_error(request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, UploadQuotaExceededError):
         return await handle_unexpected_error(request, error)
-    response = error_response(ErrorCode.RATE_LIMITED, str(error))
-    response.headers["Retry-After"] = str(max(1, math.ceil(error.retry_after_s)))
-    return response
+    return with_retry_after(error_response(ErrorCode.RATE_LIMITED, str(error)), error.retry_after_s)
 
 
 def domain_handler(code: ErrorCode) -> Callable[[Request, Exception], JSONResponse]:

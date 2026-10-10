@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Final
 
@@ -96,5 +96,5 @@ class TrackService:
             raise TrackNotFoundError(f"the timeline of track {track_id.value} is gone")
         return timeline
 
-    def watch(self, track_id: TrackId) -> AsyncIterator[TrackStatus]:
+    def watch(self, track_id: TrackId) -> AsyncGenerator[TrackStatus]:
         return self._board.watch(track_id)

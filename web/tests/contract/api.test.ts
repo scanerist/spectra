@@ -5,6 +5,7 @@ import {
   createApi,
   type EventStream,
   type Fetch,
+  STREAM_RETRIES,
   type TrackEvent,
 } from "../../src/contract/api";
 
@@ -66,6 +67,12 @@ class FakeStream implements EventStream {
   drop(readyState: number): void {
     this.readyState = readyState;
     this.onerror?.(new Event("error"));
+  }
+
+  dropRepeatedly(times: number): void {
+    for (let drop = 0; drop < times; drop += 1) {
+      this.drop(0);
+    }
   }
 }
 
@@ -228,6 +235,24 @@ describe("following the analysis", () => {
     const { stream, events } = following();
     stream.drop(0);
     expect(events).toEqual([]);
+  });
+
+  it("gives up as unavailable when reconnecting keeps failing", () => {
+    const { stream, events } = following();
+    stream.dropRepeatedly(STREAM_RETRIES);
+    const last = events.at(-1);
+    expect(events).toHaveLength(1);
+    expect(last?.kind === "failed" && last.error.code).toBe("unavailable");
+    expect(stream.closed).toBe(true);
+  });
+
+  it("forgives drops once the engine answers again", () => {
+    const { stream, events } = following();
+    stream.dropRepeatedly(STREAM_RETRIES - 1);
+    stream.emit("progress", { stage: "tempo", progress: 0.55 });
+    stream.dropRepeatedly(STREAM_RETRIES - 1);
+    expect(events.map((event) => event.kind)).toEqual(["progress"]);
+    expect(stream.closed).toBe(false);
   });
 
   it("settles as failed when the ready event breaks the contract", () => {

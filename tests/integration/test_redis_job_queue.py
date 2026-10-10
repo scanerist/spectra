@@ -143,3 +143,27 @@ async def test_ensuring_the_group_again_keeps_queued_jobs(client: Redis, stream_
     await queue.enqueue(job("a"))
     await queue.ensure_group()
     assert await take(queue) == job("a")
+
+
+async def take_until_all_taken(
+    queue: RedisJobQueue, taken: list[AnalysisJob], *, total: int, workers: list[RedisJobQueue]
+) -> None:
+    while (next_job := await queue.take()) is not None:
+        taken.append(next_job)
+        if len(taken) == total:
+            for worker in workers:
+                await worker.close()
+
+
+async def test_two_live_workers_never_take_the_same_job(client: Redis, stream_key: str) -> None:
+    workers = [await worker_queue(client, stream_key, consumer) for consumer in "ab"]
+    jobs = [job(f"track-{index}") for index in range(40)]
+    for queued in jobs:
+        await workers[0].enqueue(queued)
+    taken: list[AnalysisJob] = []
+    async with asyncio.timeout(WAIT_S), asyncio.TaskGroup() as group:
+        for worker in workers:
+            group.create_task(take_until_all_taken(worker, taken, total=len(jobs), workers=workers))
+    assert sorted(taken, key=lambda taken_job: taken_job.track_id.value) == sorted(
+        jobs, key=lambda queued: queued.track_id.value
+    )

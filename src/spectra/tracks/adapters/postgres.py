@@ -29,6 +29,8 @@ from spectra.tracks.adapters.status_records import (
 )
 from spectra.tracks.domain.track import TrackId, TrackStatus
 
+SEEN_RESOLUTION: Final = timedelta(hours=1)
+
 MIGRATIONS: Final = "spectra.tracks.adapters:migrations"
 METADATA: Final = MetaData()
 TRACKS: Final = Table(
@@ -56,15 +58,23 @@ class PostgresTrackStore:
         return True
 
     async def find(self, track_id: TrackId) -> TrackStatus | None:
-        statement = (
+        stale_before = func.now() - literal(SEEN_RESOLUTION, Interval())
+        lookup = select(TRACKS.c.status, TRACKS.c.last_seen_at < stale_before).where(
+            TRACKS.c.track_id == track_id.value
+        )
+        touch = (
             update_rows(TRACKS)
             .where(TRACKS.c.track_id == track_id.value)
             .values(last_seen_at=func.now())
-            .returning(TRACKS.c.status)
         )
         async with self._engine.begin() as connection:
-            document = (await connection.execute(statement)).scalar_one_or_none()
-        return None if document is None else status_from_document(document)
+            row = (await connection.execute(lookup)).one_or_none()
+            if row is None:
+                return None
+            document, stale = row
+            if stale:
+                await connection.execute(touch)
+        return status_from_document(document)
 
     async def save(self, track_id: TrackId, status: TrackStatus) -> None:
         values = {"state": state_of(status).value, "status": status_document(status)}

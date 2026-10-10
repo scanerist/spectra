@@ -111,6 +111,16 @@ async def test_finding_a_track_marks_it_as_seen(
     assert await last_seen_at(engine, track("a")) > LONG_AGO
 
 
+async def test_finding_a_recently_seen_track_writes_nothing(
+    engine: AsyncEngine, store: PostgresTrackStore
+) -> None:
+    await store.save(track("a"), READY)
+    recently = datetime.now(UTC) - timedelta(minutes=10)
+    await backdate(engine, track("a"), recently)
+    assert await store.find(track("a")) == READY
+    assert await last_seen_at(engine, track("a")) == recently
+
+
 async def test_upgrading_twice_keeps_the_tracks(
     engine: AsyncEngine, store: PostgresTrackStore
 ) -> None:

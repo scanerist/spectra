@@ -1,6 +1,6 @@
 import ipaddress
 from collections.abc import Callable
-from typing import Annotated, Final, Literal, override
+from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.requests import HTTPConnection
@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile
-from starlette.types import Receive, Scope, Send
 
 from spectra.gateway.errors import (
     FAILURE_CODES,
@@ -24,10 +23,11 @@ from spectra.gateway.events import (
     status_events,
     until_deadline,
 )
+from spectra.gateway.held_response import HeldStreamingResponse
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
-from spectra.gateway.slots import Slot, Slots
+from spectra.gateway.slots import Slots
 from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.errors import (
@@ -44,6 +44,7 @@ EVENT_STREAMS_STATE: Final = "event_streams"
 UPLOAD_SLOTS_STATE: Final = "upload_slots"
 TIMELINE_SLOTS_STATE: Final = "timeline_slots"
 TIMELINE_CACHE_CONTROL: Final = "private, max-age=3600"
+TIMELINE_SEND_DEADLINE_S: Final = 120.0
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
 IPV6_CLIENT_PREFIX: Final = 64
@@ -193,21 +194,6 @@ async def accept_upload(
     return TrackCreated(track_id=track_id.value)
 
 
-class HeldResponse(Response):
-    def __init__(
-        self, slot: Slot, *, content: bytes, media_type: str, headers: dict[str, str]
-    ) -> None:
-        super().__init__(content=content, media_type=media_type, headers=headers)
-        self._slot = slot
-
-    @override
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            self._slot.release()
-
-
 def create_router() -> APIRouter:
     router = APIRouter()
 
@@ -262,11 +248,12 @@ def create_router() -> APIRouter:
         except BaseException:
             slot.release()
             raise
-        return HeldResponse(
+        return HeldStreamingResponse(
             slot,
             content=timeline,
             media_type=TIMELINE_MEDIA_TYPE,
             headers={"Cache-Control": TIMELINE_CACHE_CONTROL},
+            deadline_s=TIMELINE_SEND_DEADLINE_S,
         )
 
     return router

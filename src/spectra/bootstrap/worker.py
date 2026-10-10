@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 DAY_S: Final = 86_400.0
 PENDING_REFRESH_S: Final = 15.0
+STALLED_ANALYSIS_S: Final = 2 * 3_600.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -69,11 +70,14 @@ async def serve_on(
     worker = analysis_worker(parts, observer)
     janitor = Janitor(
         expiry=adapters.store,
+        feed=adapters.feed,
         blobs=parts.blobs,
         retention_s=settings.retention_days * DAY_S,
+        stalled_after_s=STALLED_ANALYSIS_S,
     )
 
     async def sweep() -> None:
+        await janitor.abandon()
         metrics.expired.inc(await janitor.sweep())
 
     async def count_pending() -> None:

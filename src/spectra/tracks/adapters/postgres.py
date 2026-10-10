@@ -125,6 +125,23 @@ class PostgresTrackStore:
             rows = (await connection.execute(statement)).scalars().all()
         return [TrackId(track_id) for track_id in rows]
 
+    async def abandon_stalled(self, *, stalled_for_s: float, status: TrackStatus) -> list[TrackId]:
+        cutoff = func.now() - literal(timedelta(seconds=stalled_for_s), Interval())
+        statement = (
+            update_rows(TRACKS)
+            .where(TRACKS.c.state == StatusState.ANALYSING.value)
+            .where(TRACKS.c.updated_at < cutoff)
+            .values(
+                state=state_of(status).value,
+                status=status_document(status),
+                updated_at=func.now(),
+            )
+            .returning(TRACKS.c.track_id)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).scalars().all()
+        return [TrackId(track_id) for track_id in rows]
+
 
 def alembic_config(connection: Connection) -> Config:
     config = Config()

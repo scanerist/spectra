@@ -14,7 +14,7 @@ from spectra.tracks.adapters.postgres import (
     alembic_config,
     upgrade_schema,
 )
-from spectra.tracks.domain.track import TrackId, TrackStatus
+from spectra.tracks.domain.track import Failed, FailureCode, TrackId, TrackStatus
 from tests.statuses import ANALYSING, EVERY_STATUS, FAILED, READY, track
 
 DATABASE_URL = os.environ.get("SPECTRA_TEST_DATABASE_URL")
@@ -52,6 +52,14 @@ async def last_seen_at(engine: AsyncEngine, track_id: TrackId) -> datetime:
 async def backdate(engine: AsyncEngine, track_id: TrackId, seen_at: datetime = LONG_AGO) -> None:
     statement = (
         update_rows(TRACKS).where(TRACKS.c.track_id == track_id.value).values(last_seen_at=seen_at)
+    )
+    async with engine.begin() as connection:
+        await connection.execute(statement)
+
+
+async def stall(engine: AsyncEngine, track_id: TrackId, updated_at: datetime) -> None:
+    statement = (
+        update_rows(TRACKS).where(TRACKS.c.track_id == track_id.value).values(updated_at=updated_at)
     )
     async with engine.begin() as connection:
         await connection.execute(statement)
@@ -158,3 +166,22 @@ async def test_the_oldest_tracks_expire_first_up_to_the_limit(
     expired = await store.expire_unseen(unseen_for_s=timedelta(days=30).total_seconds(), limit=2)
     assert set(expired) == {track("c"), track("b")}
     assert await store.find(track("a")) == READY
+
+
+async def test_only_analyses_without_news_for_long_enough_are_abandoned(
+    engine: AsyncEngine, store: PostgresTrackStore
+) -> None:
+    abandoned = Failed(code=FailureCode.INTERNAL, message="abandoned")
+    for name, status in (("stalled", ANALYSING), ("running", ANALYSING), ("ready", READY)):
+        await store.save(track(name), status)
+    long_ago = datetime.now(UTC) - timedelta(hours=3)
+    await stall(engine, track("stalled"), long_ago)
+    await stall(engine, track("ready"), long_ago)
+    hours_2_s = timedelta(hours=2).total_seconds()
+    assert await store.abandon_stalled(stalled_for_s=hours_2_s, status=abandoned) == [
+        track("stalled")
+    ]
+    assert await store.find(track("stalled")) == abandoned
+    assert await store.find(track("running")) == ANALYSING
+    assert await store.find(track("ready")) == READY
+    assert await store.analysing_count() == 1

@@ -61,6 +61,10 @@ class UploadQuota(Protocol):
 class TrackExpiry(Protocol):
     async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]: ...
 
+    async def abandon_stalled(
+        self, *, stalled_for_s: float, status: TrackStatus
+    ) -> list[TrackId]: ...
+
 
 class ProgressFeed(Protocol):
     async def publish(self, track_id: TrackId, status: TrackStatus) -> None: ...

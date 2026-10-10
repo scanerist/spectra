@@ -5,15 +5,17 @@ from spectra.tracks.adapters.memory import (
     InMemoryProgressFeed,
     InMemoryTrackStore,
 )
-from spectra.tracks.application.janitor import SWEEP_BATCH_SIZE, Janitor
+from spectra.tracks.application.janitor import ABANDONED, SWEEP_BATCH_SIZE, Janitor
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.blobs import timeline_key, upload_key
 from spectra.tracks.domain.track import TrackId
 from tests.fakes import FakeTrackExpiry
-from tests.statuses import READY, track
+from tests.statuses import ANALYSING, READY, track
 
 DAY_S = 86_400.0
 RETENTION_S = 30 * DAY_S
+HOUR_S = 3_600.0
+STALLED_AFTER_S = 2 * HOUR_S
 
 
 async def janitor_for(
@@ -27,7 +29,13 @@ async def janitor_for(
         await blobs.put(timeline_key(track_id), b"timeline")
         await blobs.put(upload_key(track_id), b"upload")
     expiry = FakeTrackExpiry(store, unseen_s=unseen_s)
-    janitor = Janitor(expiry=expiry, blobs=blobs, retention_s=RETENTION_S)
+    janitor = Janitor(
+        expiry=expiry,
+        feed=InMemoryProgressFeed(),
+        blobs=blobs,
+        retention_s=RETENTION_S,
+        stalled_after_s=STALLED_AFTER_S,
+    )
     return janitor, board, blobs, expiry
 
 
@@ -54,3 +62,33 @@ async def test_sweeping_continues_past_one_batch() -> None:
     janitor, _, _, expiry = await janitor_for(unseen_s, capacity=len(unseen_s))
     assert await janitor.sweep() == SWEEP_BATCH_SIZE + 3
     assert expiry.limits == [SWEEP_BATCH_SIZE] * 3
+
+
+@pytest.mark.anyio
+async def test_an_analysis_without_news_for_too_long_is_abandoned_and_announced() -> None:
+    store = InMemoryTrackStore(capacity=8)
+    feed = InMemoryProgressFeed()
+    board = StatusBoard(store=store, feed=feed)
+    blobs = InMemoryBlobStore()
+    for name in ("stalled", "running"):
+        await board.record(track(name), ANALYSING)
+        await blobs.put(upload_key(track(name)), b"upload")
+    expiry = FakeTrackExpiry(
+        store,
+        unseen_s={},
+        stalled_s={track("stalled"): 3 * HOUR_S, track("running"): HOUR_S},
+    )
+    janitor = Janitor(
+        expiry=expiry,
+        feed=feed,
+        blobs=blobs,
+        retention_s=RETENTION_S,
+        stalled_after_s=STALLED_AFTER_S,
+    )
+    async with feed.subscribe(track("stalled")) as updates:
+        assert await janitor.abandon() == 1
+        assert await anext(updates) == ABANDONED
+    assert await board.find(track("stalled")) == ABANDONED
+    assert await blobs.get(upload_key(track("stalled"))) is None
+    assert await board.find(track("running")) == ANALYSING
+    assert await blobs.get(upload_key(track("running"))) == b"upload"

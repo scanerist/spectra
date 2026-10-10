@@ -9,7 +9,7 @@ from spectra.tracks.adapters.memory import InMemoryProgressFeed, InMemoryTrackSt
 from spectra.tracks.application.ports import AnalysisJob
 from spectra.tracks.application.status_board import StatusBoard
 from spectra.tracks.domain.quota import QuotaDecision, UploadSource
-from spectra.tracks.domain.track import TrackId, TrackStatus
+from spectra.tracks.domain.track import Analysing, TrackId, TrackStatus
 
 
 class FakeClock:
@@ -100,10 +100,27 @@ class FakeJobQueue:
 
 
 class FakeTrackExpiry:
-    def __init__(self, store: InMemoryTrackStore, *, unseen_s: dict[TrackId, float]) -> None:
+    def __init__(
+        self,
+        store: InMemoryTrackStore,
+        *,
+        unseen_s: dict[TrackId, float],
+        stalled_s: dict[TrackId, float] | None = None,
+    ) -> None:
         self._store = store
         self._unseen_s = unseen_s
+        self._stalled_s = stalled_s or {}
         self.limits: list[int] = []
+
+    async def abandon_stalled(self, *, stalled_for_s: float, status: TrackStatus) -> list[TrackId]:
+        stalled = [
+            track_id
+            for track_id, quiet_s in self._stalled_s.items()
+            if quiet_s > stalled_for_s and isinstance(await self._store.find(track_id), Analysing)
+        ]
+        for track_id in stalled:
+            await self._store.save(track_id, status)
+        return stalled
 
     async def expire_unseen(self, *, unseen_for_s: float, limit: int) -> list[TrackId]:
         self.limits.append(limit)

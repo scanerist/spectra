@@ -1,0 +1,23 @@
+name: spectra-test
+
+services:
+  postgres:
+    networks:
+      - published
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    networks:
+      - published
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  s3:
+    networks:
+      - published
+    ports:
+      - "127.0.0.1:7070:7070"
+
+networks:
+  published:

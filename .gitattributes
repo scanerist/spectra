@@ -4,6 +4,7 @@ Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 .env.example text eol=lf
+.env.test.example text eol=lf
 web/**/*.ts text eol=lf
 web/**/*.css text eol=lf
 web/**/*.html text eol=lf

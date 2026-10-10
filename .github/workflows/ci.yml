@@ -44,63 +44,25 @@ jobs:
 
   adapters:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.6-alpine
-        env:
-          POSTGRES_DB: spectra_test
-          POSTGRES_USER: spectra
-          POSTGRES_PASSWORD: spectra-test
-        ports:
-          - 127.0.0.1:5432:5432
-        options: >-
-          --health-cmd "pg_isready --username=spectra --dbname=spectra_test"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-      redis:
-        image: redis:8.8.3-alpine
-        ports:
-          - 127.0.0.1:6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-    env:
-      SPECTRA_TEST_DATABASE_URL: postgresql+asyncpg://spectra:spectra-test@127.0.0.1:5432/spectra_test
-      SPECTRA_TEST_REDIS_URL: redis://127.0.0.1:6379/0
-      SPECTRA_TEST_S3_URL: http://127.0.0.1:7070
-      SPECTRA_TEST_S3_ACCESS_KEY: spectra
-      SPECTRA_TEST_S3_SECRET_KEY: spectra-test-secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
-      - name: Start versitygw
-        run: |
-          docker run --detach --name s3 \
-            --publish 127.0.0.1:7070:7070 \
-            --volume s3-objects:/data/s3 \
-            --volume s3-iam:/data/iam \
-            --env VGW_BACKEND=posix \
-            --env VGW_BACKEND_ARGS=/data/s3 \
-            --env VGW_IAM_DIR=/data/iam \
-            --env VGW_PORT=:7070 \
-            --env ROOT_ACCESS_KEY="$SPECTRA_TEST_S3_ACCESS_KEY" \
-            --env ROOT_SECRET_KEY="$SPECTRA_TEST_S3_SECRET_KEY" \
-            versity/versitygw:v1.8.0
-          for _ in $(seq 30); do
-            curl --silent --output /dev/null http://127.0.0.1:7070/ && exit 0
-            sleep 1
-          done
-          docker logs s3
-          exit 1
+      - run: cp .env.test.example .env.test
+      - run: docker compose --env-file .env.test -f compose.yaml -f compose.hosted.yaml -f compose.test.yaml up --detach --wait postgres redis s3
       - run: uv sync --frozen
-      - run: uv run --frozen pytest tests/integration
+      - name: run the integration tests against the services, none may be skipped
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --frozen --env-file .env.test pytest tests/integration -rs | tee "$RUNNER_TEMP/pytest.log"
+          if grep -qE '[0-9]+ skipped' "$RUNNER_TEMP/pytest.log"; then
+            echo "::error::integration tests were skipped although their services run"
+            exit 1
+          fi
       - if: failure()
-        run: docker logs s3
+        run: docker compose --env-file .env.test -f compose.yaml -f compose.hosted.yaml -f compose.test.yaml logs postgres redis s3
 
   local:
     runs-on: ubuntu-latest
@@ -129,10 +91,39 @@ jobs:
           docker compose -f compose.yaml ps --all
           docker compose -f compose.yaml logs
 
+  hosted:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.yaml:compose.hosted.yaml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: spectra:local
+          cache-from: type=gha
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: web
+          load: true
+          tags: spectra-web:local
+          cache-from: type=gha,scope=web
+      - run: cp .env.example .env
+      - run: docker compose up --detach --wait
+      - run: docker compose exec -T api spectra-smoke
+      - name: check that the web client reaches the hosted engine
+        run: curl --fail --silent --show-error http://localhost:8080/health | jq --exit-status '.protocol == 1'
+      - if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs
+
   image:
     runs-on: ubuntu-latest
     env:
-      COMPOSE_FILE: compose.prod.yaml
+      COMPOSE_FILE: compose.yaml:compose.hosted.yaml:compose.prod.yaml
       COMPOSE_PROFILES: monitoring
       SPECTRA_IMAGE: spectra:local
       SPECTRA_WEB_IMAGE: spectra-web:local
@@ -164,11 +155,11 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
       - run: docker compose --file compose.yaml config --quiet
-      - run: docker compose up --detach --wait 2>&1 | tee "$RUNNER_TEMP/up.log"
+      - run: docker compose up --detach --wait --scale worker=2 2>&1 | tee "$RUNNER_TEMP/up.log"
         shell: bash
       - run: test "$(docker compose exec -T api id -u)" = 10001
       - run: docker compose exec -T api spectra-smoke
-      - run: test "$(docker compose ps --quiet --status running worker)" != ""
+      - run: test "$(docker compose ps --quiet --status running worker | wc -l)" = 2
       - name: check that caddy proxies the engine with its headers and keeps readiness inside
         shell: bash
         run: |
@@ -178,11 +169,12 @@ jobs:
         run: |
           curl --fail --silent --show-error --insecure https://localhost:8443/ | grep -q '<title>spectra</title>'
           curl --fail --silent --show-error --insecure --head https://localhost:8443/ | grep -qi '^content-security-policy:'
-      - name: check that prometheus scrapes every target
+      - name: check that prometheus scrapes every target and both worker replicas
         run: |
-          query='http://localhost:9090/api/v1/query?query=min(up)'
+          query='http://localhost:9090/api/v1/query'
           for _ in $(seq 30); do
-            if docker compose exec -T prometheus wget -qO- "$query" | grep -q '"1"\]'; then
+            if docker compose exec -T prometheus wget -qO- --post-data 'query=min(up)' "$query" | grep -q '"1"\]' &&
+              docker compose exec -T prometheus wget -qO- --post-data 'query=sum(up{job="worker"})' "$query" | grep -q '"2"\]'; then
               exit 0
             fi
             sleep 2

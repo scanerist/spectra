@@ -145,7 +145,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "spectra_analyses_pending",
+          "expr": "max(spectra_analyses_pending)",
           "legendFormat": "pending"
         },
         {
@@ -251,7 +251,7 @@
             "uid": "prometheus"
           },
           "expr": "process_resident_memory_bytes",
-          "legendFormat": "{{job}}"
+          "legendFormat": "{{job}} {{instance}}"
         }
       ]
     },
@@ -282,7 +282,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(spectra_tracks_expired_total[1d])",
+          "expr": "sum(increase(spectra_tracks_expired_total[1d]))",
           "legendFormat": "expired"
         }
       ]
@@ -315,7 +315,7 @@
             "uid": "prometheus"
           },
           "expr": "up",
-          "legendFormat": "{{job}}"
+          "legendFormat": "{{job}} {{instance}}"
         }
       ]
     }

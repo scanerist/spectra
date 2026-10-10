@@ -7,6 +7,9 @@
 
 	@engine path /tracks /tracks/* /health /ready
 	handle @engine {
+		request_body {
+			max_size 257MiB
+		}
 		reverse_proxy {$SPECTRA_ENGINE_ADDRESS:api:8000} {
 			flush_interval -1
 		}

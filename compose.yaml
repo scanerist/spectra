@@ -16,7 +16,7 @@ x-spectra: &spectra
   build: .
   read_only: true
   tmpfs:
-    - /tmp
+    - /tmp:size=640m
   cap_drop:
     - ALL
   environment:

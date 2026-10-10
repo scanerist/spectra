@@ -15,7 +15,7 @@ x-spectra: &spectra
   image: ${SPECTRA_IMAGE:?set SPECTRA_IMAGE in the production environment on GitHub}
   read_only: true
   tmpfs:
-    - /tmp
+    - /tmp:size=640m
   cap_drop:
     - ALL
   environment:

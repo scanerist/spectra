@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     max_decoded_samples: int = Field(default=1_800 * 96_000 * 2, ge=1)
     max_concurrent_uploads: int = Field(default=2, ge=1)
     max_event_streams: int = Field(default=64, ge=1)
+    max_timeline_downloads: int = Field(default=16, ge=1)
     max_event_streams_per_client: int = Field(default=4, ge=1)
     event_stream_lifetime_s: float = Field(default=300.0, gt=0.0, allow_inf_nan=False)
     uploads_per_hour: int = Field(default=20, ge=1)

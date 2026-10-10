@@ -15,6 +15,7 @@ from spectra.bootstrap.tracks import (
     event_streams,
     hosted_parts,
     local_parts,
+    timeline_slots,
     track_service,
     upload_slots,
 )
@@ -24,6 +25,7 @@ from spectra.gateway.request_metrics import install_request_metrics
 from spectra.gateway.routes import (
     create_router,
     install_event_streams,
+    install_timeline_slots,
     install_track_service,
     install_upload_admission,
     install_upload_slots,
@@ -53,6 +55,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
             install_event_streams(app, event_streams(settings))
             install_upload_slots(app, upload_slots(settings))
+            install_timeline_slots(app, timeline_slots(settings))
             worker = analysis_worker(parts, observer)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
@@ -67,6 +70,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))
                 install_event_streams(app, event_streams(settings))
                 install_upload_slots(app, upload_slots(settings))
+                install_timeline_slots(app, timeline_slots(settings))
                 install_readiness(
                     app,
                     Readiness(

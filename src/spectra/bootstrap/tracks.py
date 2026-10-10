@@ -29,6 +29,7 @@ from spectra.tracks.domain.quota import UploadQuotaPolicy
 HOUR_S: Final = 3_600.0
 EVENT_STREAM_RETRY_AFTER_S: Final = 10.0
 UPLOAD_RETRY_AFTER_S: Final = 5.0
+TIMELINE_RETRY_AFTER_S: Final = 5.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -106,6 +107,15 @@ def upload_slots(settings: Settings) -> Slots:
         retry_after_s=UPLOAD_RETRY_AFTER_S,
     )
     return Slots(limits=limits, name="uploads")
+
+
+def timeline_slots(settings: Settings) -> Slots:
+    limits = SlotLimits(
+        total=settings.max_timeline_downloads,
+        per_client=settings.max_timeline_downloads,
+        retry_after_s=TIMELINE_RETRY_AFTER_S,
+    )
+    return Slots(limits=limits, name="timelines")
 
 
 def analysis_observer(registry: CollectorRegistry) -> AnalysisObserver:

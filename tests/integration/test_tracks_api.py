@@ -11,6 +11,7 @@ from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.routes import (
     create_router,
+    install_timeline_slots,
     install_track_service,
     install_upload_admission,
     install_upload_slots,
@@ -76,6 +77,10 @@ class Api:
         install_track_service(app, service)
         install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
         install_upload_slots(app, self.uploads)
+        self.timelines = Slots(
+            limits=SlotLimits(total=1, per_client=1, retry_after_s=1.0), name="timelines"
+        )
+        install_timeline_slots(app, self.timelines)
         install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
         self.client = TestClient(app, raise_server_exceptions=False)
 
@@ -286,7 +291,29 @@ def test_ready_track_timeline_is_the_encoded_analysis(api: Api) -> None:
     response = api.client.get(f"/tracks/{track.value}/timeline")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["cache-control"] == "private, max-age=3600"
     assert response.content == encode_timeline(analysis)
+    assert api.timelines.held == 0
+
+
+def test_a_timeline_while_every_timeline_slot_is_taken_is_busy(api: Api) -> None:
+    track = TrackId.of_content(DATA)
+    analysis = golden_analysis()
+    asyncio.run(api.blobs.put(timeline_key(track), encode_timeline(analysis)))
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(analysis)))
+    held = api.timelines.take("someone else")
+    response = api.client.get(f"/tracks/{track.value}/timeline")
+    assert response.status_code == 503
+    assert response.json()["error"] == "busy"
+    held.release()
+    assert api.client.get(f"/tracks/{track.value}/timeline").status_code == 200
+
+
+def test_a_missing_timeline_gives_its_slot_back(api: Api) -> None:
+    track = TrackId.of_content(DATA)
+    record_now(api.board, track, Ready(summary=TrackSummary.of_analysis(golden_analysis())))
+    assert api.client.get(f"/tracks/{track.value}/timeline").status_code == 404
+    assert api.timelines.held == 0
 
 
 def test_ready_track_without_a_timeline_is_forgotten(api: Api) -> None:

@@ -74,7 +74,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           printf 'Host spectra\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  BatchMode yes\n' \
             "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
-      - name: upload compose file and environment
+      - name: upload compose file, monitoring configs and environment
         env:
           SPECTRA_LOG_LEVEL: ${{ vars.SPECTRA_LOG_LEVEL }}
           SPECTRA_API_MEMORY_LIMIT: ${{ vars.SPECTRA_API_MEMORY_LIMIT }}
@@ -113,6 +113,8 @@ jobs:
           done
           ssh spectra 'mkdir -p spectra'
           scp compose.prod.yaml spectra:spectra/compose.yaml
+          ssh spectra 'rm -rf spectra/deploy'
+          scp -r deploy spectra:spectra/
           ssh spectra 'umask 077 && cat > spectra/.env.next && mv spectra/.env.next spectra/.env' < "$environment_file"
           rm "$environment_file"
       - name: pull and start

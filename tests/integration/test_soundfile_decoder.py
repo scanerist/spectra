@@ -1,3 +1,4 @@
+import tracemalloc
 from typing import Final
 
 import numpy as np
@@ -126,3 +127,24 @@ def test_ogg_without_audio_frames_is_undecodable(decoder: AudioDecoder) -> None:
     data = encoded(tone(440.0, 3.0, 48_000), 48_000, "OGG")
     with pytest.raises(UndecodableAudioError):
         decoder.decode(data[: len(data) // 2])
+
+
+def test_decoding_many_channels_never_holds_them_all_in_memory(decoder: AudioDecoder) -> None:
+    duration_s = 4.0
+    data = multichannel(MAX_CHANNELS, MAX_SAMPLE_RATE_HZ, duration_s)
+    all_channels_bytes = int(duration_s * MAX_SAMPLE_RATE_HZ) * MAX_CHANNELS * 4
+    tracemalloc.start()
+    try:
+        signal = decoder.decode(data)
+        _, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert signal.duration_s == pytest.approx(duration_s, abs=0.01)
+    assert peak_bytes < all_channels_bytes / 2
+
+
+def test_decoding_in_blocks_keeps_the_tone_and_its_level(decoder: AudioDecoder) -> None:
+    signal = decoder.decode(multichannel(MAX_CHANNELS, 96_000, duration_s=3.0))
+    middle = signal.samples[ANALYSIS_SAMPLE_RATE_HZ : 2 * ANALYSIS_SAMPLE_RATE_HZ]
+    expected = tone(1_000.0, 1.0, ANALYSIS_SAMPLE_RATE_HZ)
+    assert np.sqrt(np.mean(middle**2)) == pytest.approx(np.sqrt(np.mean(expected**2)), rel=0.02)

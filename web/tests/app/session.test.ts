@@ -195,6 +195,12 @@ describe("messages", () => {
     expect(messageFor(new ApiError("track_not_found", ""))).toContain("закинь его ещё раз");
   });
 
+  it("name both causes of a failed analysis: a short track and silence", () => {
+    expect(messageFor(new ApiError("analysis_failed", ""))).toBe(
+      "трек слишком короткий или в нём тишина.",
+    );
+  });
+
   it("never show the engine's own message", () => {
     expect(messageFor(new ApiError("undecodable", "lost sync in frame 12"))).not.toContain("sync");
   });

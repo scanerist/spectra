@@ -38,7 +38,7 @@ export function messageFor(error: unknown): string {
     case "undecodable":
       return "не получилось прочитать файл. попробуй mp3 или wav.";
     case "analysis_failed":
-      return "в этом файле не нашлось ритма.";
+      return "трек слишком короткий или в нём тишина.";
     case "rate_limited":
       return `слишком много загрузок. попробуй через ${minutes(error.retryAfterS)} мин.`;
     case "busy":

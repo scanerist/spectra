@@ -1,3 +1,6 @@
+import asyncio
+from typing import override
+
 import pytest
 
 from spectra.analysis.domain.errors import UnsupportedFormatError
@@ -20,6 +23,21 @@ DATA = b"RIFF fake wav bytes"
 MAX_DURATION_S = 600.0
 MAX_PENDING = 2
 MAX_DECODED_SAMPLES = 600 * 48_000 * 2
+SETTLE_S = 0.2
+
+
+class SlowBlobStore(InMemoryBlobStore):
+    def __init__(self, *, put_error: Exception | None = None) -> None:
+        super().__init__()
+        self.release = asyncio.Event()
+        self._put_error = put_error
+
+    @override
+    async def put(self, key: str, data: bytes) -> None:
+        await self.release.wait()
+        if self._put_error is not None:
+            raise self._put_error
+        await super().put(key, data)
 
 
 def service_with(
@@ -27,10 +45,11 @@ def service_with(
     *,
     max_upload_bytes: int = 1_000,
     jobs: FakeJobQueue | None = None,
+    blobs: InMemoryBlobStore | None = None,
 ) -> tuple[TrackService, StatusBoard, FakeJobQueue, InMemoryBlobStore]:
     board = memory_board()
     jobs = jobs or FakeJobQueue()
-    blobs = InMemoryBlobStore()
+    blobs = blobs or InMemoryBlobStore()
     service = TrackService(
         decoder=decoder or FakeDecoder(),
         board=board,
@@ -153,3 +172,28 @@ async def test_a_track_whose_job_was_not_queued_fails_and_can_be_retried() -> No
     jobs.enqueue_error = None
     assert await service.submit(DATA) == track_id
     assert [job.track_id for job in jobs.jobs] == [track_id]
+
+
+@pytest.mark.anyio
+async def test_concurrent_uploads_cannot_overfill_the_queue() -> None:
+    blobs = SlowBlobStore()
+    service, _, jobs, _ = service_with(blobs=blobs)
+    uploads = [b"first", b"second", b"third"]
+    submits = [asyncio.create_task(service.submit(data)) for data in uploads]
+    await asyncio.wait(submits, timeout=SETTLE_S)
+    blobs.release.set()
+    results = await asyncio.gather(*submits, return_exceptions=True)
+    refused = [result for result in results if isinstance(result, AnalysisQueueFullError)]
+    assert len(refused) == len(uploads) - MAX_PENDING
+    assert len(jobs.jobs) == MAX_PENDING
+
+
+@pytest.mark.anyio
+async def test_a_track_whose_upload_was_not_stored_fails_and_can_be_retried() -> None:
+    blobs = SlowBlobStore(put_error=ConnectionError("s3 went away"))
+    blobs.release.set()
+    service, _, jobs, _ = service_with(blobs=blobs)
+    with pytest.raises(ConnectionError):
+        await service.submit(DATA)
+    assert await service.status(TrackId.of_content(DATA)) == NOT_QUEUED
+    assert jobs.jobs == []

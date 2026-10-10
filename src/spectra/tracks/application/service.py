@@ -43,6 +43,7 @@ class TrackService:
         self._blobs = blobs
         self._jobs = jobs
         self._limits = limits
+        self._reserving = asyncio.Lock()
 
     @property
     def max_upload_bytes(self) -> int:
@@ -56,20 +57,27 @@ class TrackService:
                 f"the upload is larger than {self._limits.max_upload_bytes} bytes"
             )
         track_id = await asyncio.to_thread(self._inspect, data)
-        known = await self._board.find(track_id)
-        if known is not None and not isinstance(known, Failed):
+        if not await self._reserve(track_id):
             return track_id
-        if await self._board.analysing_count() >= self._limits.max_pending:
-            raise AnalysisQueueFullError(f"{self._limits.max_pending} analyses are already queued")
-        await self._blobs.put(upload_key(track_id), data)
-        await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
         try:
+            await self._blobs.put(upload_key(track_id), data)
             await self._jobs.enqueue(AnalysisJob(track_id=track_id))
         except Exception:
             await self._board.record(track_id, NOT_QUEUED)
             await self._blobs.delete(upload_key(track_id))
             raise
         return track_id
+
+    async def _reserve(self, track_id: TrackId) -> bool:
+        async with self._reserving:
+            known = await self._board.find(track_id)
+            if known is not None and not isinstance(known, Failed):
+                return False
+            if await self._board.analysing_count() >= self._limits.max_pending:
+                limit = self._limits.max_pending
+                raise AnalysisQueueFullError(f"{limit} analyses are already queued")
+            await self._board.record(track_id, Analysing.at(AnalysisStage.DECODING))
+            return True
 
     def _inspect(self, data: bytes) -> TrackId:
         probe = self._decoder.probe(data)

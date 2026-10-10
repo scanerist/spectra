@@ -59,6 +59,7 @@ services:
     networks:
       - proxy
       - backend
+    stop_grace_period: 30s
     healthcheck:
       start_period: 10s
       start_interval: 2s
@@ -191,6 +192,10 @@ services:
       - "yes"
       - --requirepass
       - ${REDIS_PASSWORD:?}
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - noeviction
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?}
     networks:

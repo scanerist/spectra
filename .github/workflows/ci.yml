@@ -139,8 +139,9 @@ jobs:
       - run: docker compose exec -T api spectra-smoke
       - run: test "$(docker compose ps --quiet --status running worker)" != ""
       - name: check that caddy proxies the engine with its headers and keeps readiness inside
+        shell: bash
         run: |
-          curl --fail --silent --show-error --insecure --head https://localhost:8443/health | grep -qi '^permissions-policy:'
+          curl --fail --silent --show-error --insecure --dump-header - --output /dev/null https://localhost:8443/health | grep -qi '^permissions-policy:'
           test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' https://localhost:8443/ready)" = 404
       - name: check that caddy serves the web client
         run: |

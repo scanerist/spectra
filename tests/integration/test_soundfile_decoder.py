@@ -14,8 +14,9 @@ from spectra.analysis.adapters.soundfile_decoder import (
 from spectra.analysis.application.ports import AudioDecoder, AudioFormat
 from spectra.analysis.domain.errors import UndecodableAudioError, UnsupportedFormatError
 from spectra.analysis.domain.signal import ANALYSIS_SAMPLE_RATE_HZ
-from spectra.analysis.domain.stft import bin_freqs_hz, stft_magnitudes
+from spectra.analysis.domain.stft import bin_freqs_hz
 from tests.audio_files import encoded, tone
+from tests.signals import whole_stft
 
 CONTAINERS: Final = [
     ("WAV", AudioFormat.WAV),
@@ -84,7 +85,7 @@ def test_decode_gives_mono_at_the_analysis_rate(
     frames = tone(1_000.0, 3.0, 48_000)
     signal = decoder.decode(encoded(np.stack([frames, frames], axis=1), 48_000, container))
     assert signal.duration_s == pytest.approx(3.0, abs=0.1)
-    peak_hz = bin_freqs_hz()[np.argmax(stft_magnitudes(signal)[20:-20].mean(axis=0))]
+    peak_hz = bin_freqs_hz()[np.argmax(whole_stft(signal)[20:-20].mean(axis=0))]
     assert peak_hz == pytest.approx(1_000.0, abs=11.0)
     assert audio_format in AudioFormat
 

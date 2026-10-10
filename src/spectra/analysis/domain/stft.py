@@ -12,7 +12,6 @@ from spectra.analysis.domain.signal import ANALYSIS_SAMPLE_RATE_HZ, AudioSignal
 WINDOW_SAMPLES: Final = 2048
 HOP_SAMPLES: Final = 512
 FRAME_RATE_HZ: Final = ANALYSIS_SAMPLE_RATE_HZ / HOP_SAMPLES
-BIN_COUNT: Final = WINDOW_SAMPLES // 2 + 1
 CHUNK_FRAMES: Final = 1024
 
 
@@ -63,10 +62,6 @@ def stft_chunks(
         frames = windows[start * shape.hop_samples : stop * shape.hop_samples : shape.hop_samples]
         spectrum = np.fft.rfft(frames * taper, axis=1)[:, :bin_limit]
         yield np.abs(spectrum).astype(np.float32)
-
-
-def stft_magnitudes(signal: AudioSignal) -> Float32Array:
-    return np.concatenate(list(stft_chunks(signal)))
 
 
 def centred(samples: Float32Array, total_frames: int, *, shape: StftShape) -> Float32Array:

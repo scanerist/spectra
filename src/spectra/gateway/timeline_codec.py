@@ -4,6 +4,10 @@ from typing import Final
 import numpy as np
 from numpy.typing import NDArray
 
+from spectra.analysis.domain.bands import BAND_COUNT
+from spectra.analysis.domain.bar_spectra import FOURIER_BIN_COUNT
+from spectra.analysis.domain.frame_levels import LEVEL_COUNT
+from spectra.analysis.domain.peaks import PEAK_COUNT, PEAK_FIELD_COUNT
 from spectra.analysis.domain.ranges import Float32Array
 from spectra.analysis.domain.track_analysis import TrackAnalysis
 from spectra.gateway.protocol import PROTOCOL_VERSION
@@ -11,10 +15,11 @@ from spectra.gateway.protocol import PROTOCOL_VERSION
 HEADER: Final = struct.Struct("<IfII")
 UINT8_SCALE: Final = 255
 WIRE_FLOAT32: Final = np.dtype("<f4")
-PEAK_ROW_BYTES: Final = 8 * 2 * 4
-BAND_ROW_BYTES: Final = 64
-LEVEL_ROW_BYTES: Final = 5
-FOURIER_ROW_BYTES: Final = 200
+WIRE_UINT8: Final = np.dtype(np.uint8)
+PEAK_ROW_BYTES: Final = PEAK_COUNT * PEAK_FIELD_COUNT * WIRE_FLOAT32.itemsize
+BAND_ROW_BYTES: Final = BAND_COUNT * WIRE_UINT8.itemsize
+LEVEL_ROW_BYTES: Final = LEVEL_COUNT * WIRE_UINT8.itemsize
+FOURIER_ROW_BYTES: Final = FOURIER_BIN_COUNT * WIRE_UINT8.itemsize
 
 
 def timeline_length(*, frame_count: int, bar_count: int) -> int:

@@ -9,7 +9,13 @@ from fastapi.testclient import TestClient
 from spectra.analysis.domain.errors import UnsupportedFormatError
 from spectra.analysis.domain.track_analysis import AnalysisStage
 from spectra.gateway.errors import install_error_handlers
-from spectra.gateway.routes import create_router, install_track_service, install_upload_admission
+from spectra.gateway.routes import (
+    create_router,
+    install_track_service,
+    install_upload_admission,
+    install_upload_slots,
+)
+from spectra.gateway.slots import SlotLimits, Slots
 from spectra.gateway.timeline_codec import encode_timeline
 from spectra.gateway.upload_limit import MULTIPART_OVERHEAD_BYTES, install_upload_limit
 from spectra.tracks.adapters.memory import InMemoryBlobStore
@@ -48,6 +54,9 @@ class Api:
         self.jobs = FakeJobQueue()
         self.blobs = InMemoryBlobStore()
         self.clients = UnlimitedQuota()
+        self.uploads = Slots(
+            limits=SlotLimits(total=1, per_client=1, retry_after_s=1.0), name="uploads"
+        )
         service = TrackService(
             decoder=decoder or FakeDecoder(),
             board=self.board,
@@ -65,6 +74,7 @@ class Api:
         install_error_handlers(app)
         install_track_service(app, service)
         install_upload_admission(app, UploadAdmission(quota=quota or self.clients))
+        install_upload_slots(app, self.uploads)
         install_upload_limit(app, max_upload_bytes=LIMIT_BYTES)
         self.client = TestClient(app, raise_server_exceptions=False)
 
@@ -101,6 +111,29 @@ def test_a_rate_limited_upload_is_refused_before_its_body_is_read() -> None:
     headers = {"content-type": "multipart/form-data; boundary=b"}
     response = api.client.post("/tracks", content=body, headers=headers)
     assert response.status_code == 429
+
+
+def test_an_upload_while_every_upload_slot_is_taken_is_busy_and_not_counted(api: Api) -> None:
+    held = api.uploads.take("someone else")
+    response = api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")})
+    assert response.status_code == 503
+    assert response.json()["error"] == "busy"
+    assert api.clients.clients == []
+    held.release()
+    assert (
+        api.client.post("/tracks", files={"file": ("t.wav", DATA, "audio/wav")}).status_code == 202
+    )
+
+
+@pytest.mark.parametrize(
+    ("data", "status_code"),
+    [(DATA, 202), (b"", 400), (b"x" * (LIMIT_BYTES + 1), 413)],
+    ids=["accepted", "empty", "too-large"],
+)
+def test_an_upload_gives_its_slot_back(api: Api, data: bytes, status_code: int) -> None:
+    response = api.client.post("/tracks", files={"file": ("t.wav", data, "audio/wav")})
+    assert response.status_code == status_code
+    assert api.uploads.held == 0
 
 
 def test_upload_without_a_file_part_is_no_file(api: Api) -> None:

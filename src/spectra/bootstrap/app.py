@@ -16,6 +16,7 @@ from spectra.bootstrap.tracks import (
     hosted_parts,
     local_parts,
     track_service,
+    upload_slots,
 )
 from spectra.gateway.errors import install_error_handlers
 from spectra.gateway.readiness import Readiness, install_readiness
@@ -25,6 +26,7 @@ from spectra.gateway.routes import (
     install_event_streams,
     install_track_service,
     install_upload_admission,
+    install_upload_slots,
 )
 from spectra.gateway.security_headers import install_security_headers
 from spectra.gateway.upload_limit import install_upload_limit
@@ -50,6 +52,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
             install_track_service(app, track_service(parts, settings))
             install_upload_admission(app, UploadAdmission(quota=parts.quota))
             install_event_streams(app, event_streams(settings))
+            install_upload_slots(app, upload_slots(settings))
             worker = analysis_worker(parts, observer)
             async with asyncio.TaskGroup() as group:
                 group.create_task(worker.run())
@@ -63,6 +66,7 @@ def create_app(settings: Settings, hosted: HostedSettings | None = None) -> Fast
                 install_track_service(app, track_service(hosted_tracks, settings))
                 install_upload_admission(app, UploadAdmission(quota=hosted_tracks.quota))
                 install_event_streams(app, event_streams(settings))
+                install_upload_slots(app, upload_slots(settings))
                 install_readiness(
                     app,
                     Readiness(

@@ -25,6 +25,7 @@ from spectra.gateway.events import (
 from spectra.gateway.protocol import PROTOCOL_VERSION
 from spectra.gateway.readiness import Readiness, readiness
 from spectra.gateway.schemas import TrackCreated, TrackInfo, track_info
+from spectra.gateway.slots import Slots
 from spectra.tracks.application.admission import UploadAdmission
 from spectra.tracks.application.service import TrackService
 from spectra.tracks.domain.errors import (
@@ -37,7 +38,7 @@ from spectra.tracks.domain.track import Analysing, Failed, Ready, TrackId, Track
 TRACK_SERVICE_STATE: Final = "track_service"
 UPLOAD_ADMISSION_STATE: Final = "upload_admission"
 EVENT_STREAMS_STATE: Final = "event_streams"
-UPLOAD_CHUNK_BYTES: Final = 1 << 20
+UPLOAD_SLOTS_STATE: Final = "upload_slots"
 TIMELINE_MEDIA_TYPE: Final = "application/octet-stream"
 UNKNOWN_CLIENT: Final = "unknown"
 IPV6_CLIENT_PREFIX: Final = 64
@@ -89,10 +90,22 @@ def event_streams(connection: HTTPConnection) -> EventStreams:
     return streams
 
 
+def install_upload_slots(app: FastAPI, slots: Slots) -> None:
+    setattr(app.state, UPLOAD_SLOTS_STATE, slots)
+
+
+def upload_slots(connection: HTTPConnection) -> Slots:
+    slots = getattr(connection.app.state, UPLOAD_SLOTS_STATE, None)
+    if not isinstance(slots, Slots):
+        raise GatewayNotConfiguredError("the upload slots are not installed on the app")
+    return slots
+
+
 type Service = Annotated[TrackService, Depends(track_service)]
 type Admission = Annotated[UploadAdmission, Depends(upload_admission)]
 type Probes = Annotated[Readiness, Depends(readiness)]
 type Streams = Annotated[EventStreams, Depends(event_streams)]
+type UploadSlots = Annotated[Slots, Depends(upload_slots)]
 
 
 def client_address(request: Request) -> str:
@@ -113,14 +126,12 @@ def client_address(request: Request) -> str:
 async def read_upload(upload: UploadFile | None, *, limit: int) -> bytes:
     if upload is None:
         raise EmptyUploadError("the request has no file part")
-    chunks: list[bytes] = []
-    received = 0
-    while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
-        received += len(chunk)
-        if received > limit:
-            raise FileTooLargeError(f"the upload is larger than {limit} bytes")
-        chunks.append(chunk)
-    return b"".join(chunks)
+    if upload.size is not None and upload.size > limit:
+        raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+    data = await upload.read(limit + 1)
+    if len(data) > limit:
+        raise FileTooLargeError(f"the upload is larger than {limit} bytes")
+    return data
 
 
 async def ready_summary(service: TrackService, track_id: str) -> tuple[TrackId, TrackSummary]:
@@ -132,6 +143,24 @@ async def ready_summary(service: TrackService, track_id: str) -> tuple[TrackId, 
             raise ApiError(ErrorCode.NOT_READY, "the analysis of this track is still running")
         case Failed(code=code, message=message):
             raise ApiError(FAILURE_CODES[code], message)
+
+
+async def accept_upload(
+    request: Request, client: str, service: TrackService, admission: UploadAdmission
+) -> TrackCreated:
+    await admission.admit(client)
+    async with request.form(max_files=1, max_fields=0) as form:
+        upload = form.get("file")
+        data = await read_upload(
+            upload if isinstance(upload, UploadFile) else None,
+            limit=service.max_upload_bytes,
+        )
+    try:
+        track_id = await service.submit(data)
+    except AnalysisQueueFullError:
+        await admission.refund(client)
+        raise
+    return TrackCreated(track_id=track_id.value)
 
 
 def create_router() -> APIRouter:
@@ -149,22 +178,14 @@ def create_router() -> APIRouter:
 
     @router.post("/tracks", status_code=status.HTTP_202_ACCEPTED)
     async def upload_track(
-        request: Request, service: Service, admission: Admission
+        request: Request, service: Service, admission: Admission, uploads: UploadSlots
     ) -> TrackCreated:
         client = client_address(request)
-        await admission.admit(client)
-        async with request.form(max_files=1, max_fields=0) as form:
-            upload = form.get("file")
-            data = await read_upload(
-                upload if isinstance(upload, UploadFile) else None,
-                limit=service.max_upload_bytes,
-            )
+        slot = uploads.take(client)
         try:
-            track_id = await service.submit(data)
-        except AnalysisQueueFullError:
-            await admission.refund(client)
-            raise
-        return TrackCreated(track_id=track_id.value)
+            return await accept_upload(request, client, service, admission)
+        finally:
+            slot.release()
 
     @router.get("/tracks/{track_id}")
     async def get_track(track_id: str, service: Service) -> TrackInfo:

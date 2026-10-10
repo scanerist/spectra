@@ -34,11 +34,29 @@ describe("the strongest bands", () => {
     const bands = new Uint8Array(BAND_COUNT);
     bands[0] = 255;
     bands[63] = 255;
-    expect(strongestBands(bands)).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(strongestBands(bands)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it("fall back to the lowest bands on silence", () => {
     expect(strongestBands(new Uint8Array(BAND_COUNT), 3)).toEqual([1, 2, 3]);
+  });
+
+  it("count a flat peak once, at its first band", () => {
+    const bands = new Uint8Array(BAND_COUNT);
+    bands.set([0, 60, 200, 200, 60, 0, 150, 0], 0);
+    expect(strongestBands(bands, 2)).toEqual([2, 6]);
+  });
+
+  it("do not take a flat shoulder for a peak", () => {
+    const bands = new Uint8Array(BAND_COUNT);
+    bands.set([0, 60, 200, 200, 250, 0, 150, 0], 0);
+    expect(strongestBands(bands, 2)).toEqual([4, 6]);
+  });
+
+  it("fill the remaining slots with the loudest other bands", () => {
+    const bands = new Uint8Array(BAND_COUNT);
+    bands.set([0, 50, 100, 0, 0, 20, 30], 0);
+    expect(strongestBands(bands, 3)).toEqual([1, 2, 6]);
   });
 });
 

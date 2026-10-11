@@ -5,6 +5,7 @@ import {
   createApi,
   type EventStream,
   type Fetch,
+  STREAM_RETRIES,
   type TrackEvent,
 } from "../../src/contract/api";
 
@@ -279,6 +280,53 @@ describe("following the analysis", () => {
     const { stream, events } = following();
     stream.drop(0);
     expect(events).toEqual([]);
+  });
+
+  it("asks for the track after the stream keeps dropping while it reconnects", async () => {
+    const { stream, events } = following(() => json(TRACK_JSON));
+    for (let drop = 1; drop < STREAM_RETRIES; drop += 1) {
+      stream.drop(0);
+    }
+    await settled();
+    expect(events).toEqual([]);
+    stream.drop(0);
+    await settled();
+    expect(stream.closed).toBe(true);
+    expect(events.map((event) => event.kind)).toEqual(["ready"]);
+  });
+
+  it("counts drops again after an event arrives", async () => {
+    const { stream, events } = following(() => json(TRACK_JSON));
+    for (let drop = 1; drop < STREAM_RETRIES; drop += 1) {
+      stream.drop(0);
+    }
+    stream.emit("progress", { stage: "tempo", progress: 0.55 });
+    stream.drop(0);
+    await settled();
+    expect(events.map((event) => event.kind)).toEqual(["progress"]);
+  });
+
+  it("reports an unreachable engine once the stream keeps dropping", async () => {
+    const streams: FakeStream[] = [];
+    const events: TrackEvent[] = [];
+    const api = createApi(
+      async () => {
+        throw new TypeError("network down");
+      },
+      () => {
+        const stream = new FakeStream();
+        streams.push(stream);
+        return stream;
+      },
+      async () => {},
+    );
+    api.follow("9f2c41d07a3b55e1", (event) => events.push(event));
+    for (let drop = 0; drop < STREAM_RETRIES; drop += 1) {
+      streams[0]?.drop(0);
+    }
+    await settled();
+    const last = events.at(-1);
+    expect(last?.kind === "failed" && last.error.code).toBe("unavailable");
   });
 
   it("settles as failed when the ready event breaks the contract", () => {

@@ -81,7 +81,7 @@ services:
 
   prometheus:
     <<: *service
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.15.0
     profiles: [monitoring]
     command:
       - --config.file=/etc/prometheus/prometheus.yml

@@ -1,6 +1,7 @@
 import { decodeTimeline, type Timeline } from "./timeline";
 
 export const PROTOCOL_VERSION = 1;
+export const STREAM_RETRIES = 5;
 
 const ERROR_CODES = [
   "no_file",
@@ -119,6 +120,7 @@ export function createApi(
       const path = `/tracks/${encodeURIComponent(trackId)}`;
       let settled = false;
       let stream: EventStream | null = null;
+      let drops = 0;
       const settle = (event: TrackEvent) => {
         if (settled) {
           return;
@@ -131,6 +133,7 @@ export function createApi(
         if (settled) {
           return;
         }
+        drops = 0;
         let event: TrackEvent;
         try {
           event = build();
@@ -162,6 +165,7 @@ export function createApi(
       const open = () => {
         const opened = openStream(`${path}/events`);
         stream = opened;
+        drops = 0;
         opened.addEventListener("progress", (event) =>
           read(() => {
             const body = parse(event.data);
@@ -179,7 +183,11 @@ export function createApi(
           read(() => ({ kind: "failed", error: errorBody(parse(event.data)) })),
         );
         opened.onerror = () => {
-          if (!settled && opened.readyState === CLOSED) {
+          if (settled || stream !== opened) {
+            return;
+          }
+          drops += 1;
+          if (opened.readyState === CLOSED || drops >= STREAM_RETRIES) {
             opened.close();
             void recover();
           }

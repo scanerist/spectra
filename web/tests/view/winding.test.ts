@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fourierAt, sweepHz, windowOf } from "../../src/screens/analysis-views";
 import type { Epicycle } from "../../src/view/fourier";
+import { binOf, fourierAt, sweepHz, windowOf } from "../../src/view/winding";
 
 const SAMPLE_RATE_HZ = 44_100;
 
@@ -14,6 +14,12 @@ describe("the winding view", () => {
     expect(sweepHz(4.5)).toBeCloseTo(Math.sqrt(30 * 600));
     expect(sweepHz(5)).toBeCloseTo(30);
     expect(sweepHz(-0.5)).toBeCloseTo(Math.sqrt(30 * 600));
+  });
+
+  it("places the swept frequency on the fourier bins", () => {
+    expect(binOf(sweepHz(0))).toBeCloseTo(0);
+    expect(binOf(sweepHz(0.5))).toBeCloseTo(99.5);
+    expect(binOf(sweepHz(0.999_999))).toBeCloseTo(199, 3);
   });
 
   it("finds a bar's frequency in the window it synthesises", () => {

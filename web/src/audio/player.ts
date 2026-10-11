@@ -3,6 +3,7 @@ export const ANALYSER_FFT_SIZE = 2048;
 export const ANALYSER_SMOOTHING = 0.55;
 
 const SEEK_MARGIN_S = 0.01;
+const PLAYABLE_TIMEOUT_MS = 30_000;
 const HAVE_CURRENT_DATA = 2;
 const INTERRUPTIONS: readonly string[] = ["NotAllowedError", "AbortError"];
 
@@ -21,11 +22,12 @@ interface Playing {
   readonly source: MediaElementAudioSourceNode;
 }
 
-export function whenPlayable(media: Media): Promise<void> {
+export function whenPlayable(media: Media, deadline: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const stop = () => {
       media.removeEventListener("loadeddata", ready);
       media.removeEventListener("error", failed);
+      deadline.removeEventListener("abort", late);
     };
     const ready = () => {
       stop();
@@ -39,10 +41,17 @@ export function whenPlayable(media: Media): Promise<void> {
       stop();
       reject(new Error("the browser cannot play this file"));
     };
+    const late = () => {
+      stop();
+      reject(new Error("the browser did not load the file in time"));
+    };
     media.addEventListener("loadeddata", ready);
     media.addEventListener("error", failed);
+    deadline.addEventListener("abort", late);
     if (media.readyState >= HAVE_CURRENT_DATA) {
       ready();
+    } else if (deadline.aborted) {
+      late();
     }
   });
 }
@@ -98,7 +107,7 @@ export class Player {
     element.preload = "auto";
     element.src = audio.url;
     try {
-      await whenPlayable(element);
+      await whenPlayable(element, AbortSignal.timeout(PLAYABLE_TIMEOUT_MS));
     } catch (error) {
       this.release(audio);
       throw error;

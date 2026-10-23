@@ -118,7 +118,7 @@ services:
 
   s3:
     <<: *service
-    image: versity/versitygw:v1.8.0
+    image: versity/versitygw:v1.9.0
     environment:
       VGW_BACKEND: posix
       VGW_BACKEND_ARGS: /data/s3

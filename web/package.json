@@ -16,10 +16,10 @@
     "check": "biome ci . && tsc --noEmit && vitest run && vite build"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
-    "@types/node": "26.6.4",
+    "@biomejs/biome": "2.6.3",
+    "@types/node": "26.6.5",
     "typescript": "7.0.2",
-    "vite": "8.3.3",
-    "vitest": "5.0.3"
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   }
 }

@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.13.0 AS uv
 
-FROM python:3.14-slim-trixie AS build
+FROM python:3.15-slim-trixie AS build
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -16,7 +16,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
-FROM python:3.14-slim-trixie AS runtime
+FROM python:3.15-slim-trixie AS runtime
 RUN groupadd --system --gid 10001 spectra \
     && useradd --system --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin spectra
 COPY --from=build --chown=10001:10001 /app/.venv /app/.venv
